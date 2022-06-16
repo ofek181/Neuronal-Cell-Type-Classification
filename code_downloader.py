@@ -7,13 +7,18 @@ import matplotlib.pyplot as plt
 import pickle
 import os
 import warnings
-from h5py.h5py_warnings import H5pyDeprecationWarning
+from gramian_angular_field import activity_to_image_gaf
+from imageio import imwrite
 
-warnings.filterwarnings('ignore', category=H5pyDeprecationWarning)
+warnings.filterwarnings('ignore')
 
 dir_path = os.path.dirname(os.path.realpath(__file__))
 data_path = dir_path + '\\cell_types'
+images_path = data_path + '\\images'
 
+# TODO add docstrings
+# TODO delete non used functions and make code more readable
+# TODO fix pathing of data creation
 
 class Downloader:
     def __init__(self, human: bool = False, out_dir: str = None) -> None:
@@ -28,16 +33,6 @@ class Downloader:
 
     def download(self):
         pass
-
-    def create_ephys_csv_data(self):
-        pass
-
-    @staticmethod
-    def save_pkl_as_csv():
-        with open(data_path + "\\ephys_data.pkl", "rb") as f:
-            data = pickle.load(f)
-        df = pd.DataFrame(data)
-        df.to_csv(os.path.join(data_path, 'ephys_data.csv'))
 
     def create_data(self):
         cell_db = {}
@@ -66,21 +61,20 @@ class Downloader:
                 this_cell_id = '{}_{}'.format(cell_id, sweep_num)
                 sweep_data = data_set.get_sweep(sweep_num)
                 ephys_feats = self.get_ephys_features(sweep_data)
-                # raw_data_file = '{}/{}_data.npy'.format(self.out_dir, this_cell_id)
-                # raw_data_stim = '{}{}_stim.npy'.format(self.data_path, this_cell_id)
-                # relevant_signal = range(*sweep_data['index_range'])
-                # stimulation_given = np.where(sweep_data['stimulus'][relevant_signal] > 0)[0]
-                # resample = int(sweep_data['sampling_rate'] / self.sample_rate)
-                # response = sweep_data['response'][relevant_signal][stimulation_given][::resample]
-                # np.save(raw_data_file, response)  # .astype('float16'))
-                # np.save(raw_data_file, response.astype('float16'))
-                # np.save(raw_data_stim, stimulation_given)
+                raw_data_file = '{}/{}.npy'.format(data_path, this_cell_id)
+                relevant_signal = range(*sweep_data['index_range'])
+                stimulation_given = np.where(sweep_data['stimulus'][relevant_signal] > 0)[0]
+                resample = int(sweep_data['sampling_rate'] / self.sample_rate)
+                response = sweep_data['response'][relevant_signal][stimulation_given][::resample]
+                response_img = activity_to_image_gaf(response)
+                image_save_location = '{}{}.png'.format(images_path, this_cell_id)
+                imwrite(image_save_location, response_img)
+                np.save(raw_data_file, response)
                 cell_db[this_cell_id] = {**{'layer': cell['structure_layer_name'],
                                             'dendrite_type': cell['dendrite_type'],
                                             'structure_area_abbrev': cell['structure_area_abbrev'],
                                             'sampling_rate': sweep_data['sampling_rate']}, **ephys_feats}
-                # 'stimulation_given': raw_data_stim}
-                print(cell_db[this_cell_id])
+                # print(cell_db[this_cell_id])
 
         df = pd.DataFrame(data=cell_db).transpose()
         df['sampling_rate'] = df['sampling_rate'].astype('float')
@@ -91,6 +85,13 @@ class Downloader:
         df['file_name'] = df.index
         with open(data_path + '\\ephys_data.pkl', 'wb') as f:
             pickle.dump(df, f, pickle.HIGHEST_PROTOCOL)
+
+    @staticmethod
+    def save_pkl_as_csv():
+        with open(data_path + "\\ephys_data.pkl", "rb") as f:
+            data = pickle.load(f)
+        df = pd.DataFrame(data)
+        df.to_csv(os.path.join(data_path, 'ephys_data.csv'))
 
     @staticmethod
     def get_ephys_features(sweep_data):
@@ -114,8 +115,8 @@ class Downloader:
 
 if __name__ == '__main__':
     downloader = Downloader(human=True, out_dir='cell_types/')
-    # downloader.create_data()
-    downloader.save_pkl_as_csv()
+    downloader.create_data()
+    # downloader.save_pkl_as_csv()
     # downloader.create_ephys_csv_data()
     """
     plt.subplot(2,1,1)
