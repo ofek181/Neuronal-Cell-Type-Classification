@@ -7,7 +7,7 @@ import matplotlib.pyplot as plt
 import pickle
 import os
 import warnings
-from gramian_angular_field import activity_to_image_gaf
+from time_series_to_image import activity_to_image_gaf
 from imageio import imwrite
 
 warnings.filterwarnings('ignore')
