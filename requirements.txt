@@ -74,3 +74,5 @@ wincertstore==0.2
 xarray==0.15.1
 yarl==1.7.2
 zipp==3.8.0
+
+pyts~=0.12.0
