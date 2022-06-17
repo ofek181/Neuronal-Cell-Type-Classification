@@ -1,5 +1,5 @@
 import numpy as np
-from pyts.image import GramianAngularField, RecurrencePlot, MarkovTransitionField
+from pyts.image import GramianAngularField
 
 IMG_SIZE = 224
 
@@ -10,7 +10,6 @@ def activity_to_image_gaf(activity: np.array) -> np.ndarray:
     segment_length = int(len(activity)/3)
     for i in range(3):
         segment = activity[i*segment_length:(i+1)*segment_length]
-        image[:, :, i] = gaf.transform(segment.reshape(1, -1)).squeeze()
+        image[:, :, i] = gaf.fit_transform(segment.reshape(1, -1))
     return image
 
-# TODO add RecurrencePlot and MarkovTransitionField implementations of activity_to_image
