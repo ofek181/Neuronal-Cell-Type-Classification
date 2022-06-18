@@ -24,11 +24,7 @@ class Model(ABC):
         pass
 
     @abstractmethod
-    def train(self):
-        pass
-
-    @abstractmethod
-    def test(self, x):
+    def train_and_test(self):
         pass
 
     @staticmethod
