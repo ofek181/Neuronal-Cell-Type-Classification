@@ -1,7 +1,7 @@
 from sklearn.metrics import accuracy_score, f1_score, precision_score, recall_score, roc_auc_score
 
 
-def calc_metrics(y_true: list, y_pred: list):
+def calculate_metrics(y_true: list, y_pred: list):
     """
     :param y_true: true labels provided by the dataset.
     :param y_pred: predicted labels provided by the model.
