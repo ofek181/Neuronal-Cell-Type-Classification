@@ -1,14 +1,15 @@
+#!/usr/bin/env python -W ignore::DeprecationWarning
 from allensdk.core.cell_types_cache import CellTypesCache
 from allensdk.api.queries.cell_types_api import CellTypesApi
 from allensdk.ephys.ephys_extractor import EphysSweepFeatureExtractor
 import pandas as pd
 import numpy as np
 import os
-import warnings
 from time_series_to_image import activity_to_image_gaf
 from imageio import imwrite
-
-warnings.filterwarnings('ignore')
+from tqdm import tqdm
+import warnings
+warnings.simplefilter("ignore", DeprecationWarning)
 
 dir_path = os.path.dirname(os.path.realpath(__file__))
 
@@ -40,7 +41,9 @@ class Downloader:
         """
         response_gaf = activity_to_image_gaf(response)
         image_name = '{}_gaf.png'.format(cell_id)
-        imwrite(os.path.join(gaf_path, image_name), response_gaf)
+        scaled_image = 255 * (response_gaf + 1) / 2
+        img = scaled_image.astype(np.uint8)
+        imwrite(os.path.join(gaf_path, image_name), img)
 
     @staticmethod
     def save_gaf_and_raw_data(sweep_data: dict, cell_id: str) -> None:
@@ -70,10 +73,6 @@ class Downloader:
         df['layer'] = df['layer'].astype('int')
         df = df[df['dendrite_type'].isin(['spiny', 'aspiny'])]
         df['file_name'] = df.index
-
-        # with open(dataframe_path + '\\ephys_data.pkl', 'wb') as f:
-        #     pickle.dump(df, f)
-
         df.to_csv(os.path.join(dataframe_path, 'extracted_mean_ephys_data.csv'))
 
     @staticmethod
@@ -112,7 +111,7 @@ class Downloader:
         :return: creates the cell ephys db and saves data into known paths with different formats.
         """
         cell_db = {}
-        for ind, cell in enumerate(self.cells):
+        for ind, cell in tqdm(enumerate(self.cells)):
             cell_id = cell['id']
             data_set = self.ctc.get_ephys_data(cell_id)
             sweeps = self.ctc.get_ephys_sweeps(cell_id)
@@ -132,8 +131,8 @@ class Downloader:
                 data_set = self.ctc.get_ephys_data(cell_id)
 
             for sweep_num in [noise_sweep_number[0]]:
-                print('Processing cell: {} sweep: {}. Cell {}/{}'.format(cell_id, sweep_num,
-                                                                         ind + 1, len(self.cells)))
+                # print('Processing cell: {} sweep: {}. Cell {}/{}'.format(cell_id, sweep_num,
+                #                                                          ind + 1, len(self.cells)))
                 this_cell_id = '{}_{}'.format(cell_id, sweep_num)
                 sweep_data = data_set.get_sweep(sweep_num)
                 ephys_feats = self.get_ephys_features(sweep_data)
