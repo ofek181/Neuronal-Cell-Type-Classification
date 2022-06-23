@@ -3,8 +3,8 @@ import pandas as pd
 
 
 class Model(ABC):
-    def __init__(self, data: pd.DataFrame, num_layers: int = 2,
-                 num_neurons: int = 256, batch_size: int = 64, n_epochs: int = 50) -> None:
+    def __init__(self, data, num_layers: int = 2, num_neurons: int = 256,
+                 batch_size: int = 64, n_epochs: int = 50) -> None:
         """
         :param data: DataFrame containing the train/test data.
         :param num_layers: number of layer in the model.
