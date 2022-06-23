@@ -15,13 +15,14 @@ class Tsne(Model):
         """
         :param db: cell ephys features dataframe.
         """
-        encoder = LabelEncoder()
+        # encoder = LabelEncoder()
         scaler = StandardScaler()
         db = db.dropna(axis=1, how='all')
         db = db.dropna(axis=0)
         irrelevant_columns = ['layer', 'structure_area_abbrev', 'sampling_rate', 'mean_clipped', 'file_name']
         db = db.drop([x for x in irrelevant_columns if x in db.columns], axis=1)
-        db['dendrite_type'] = encoder.fit_transform(db['dendrite_type'])
+        # db['dendrite_type'] = encoder.fit_transform(db['dendrite_type'])
+        db = db.drop(["dendrite_type"], axis=1)
         db = scaler.fit_transform(db)
         super(Tsne, self).__init__(db)
 
@@ -43,16 +44,18 @@ class Tsne(Model):
     def save_results() -> None:
         pass
 
-    def plot_tsne(self, results: np.ndarray) -> None:
+    def plot_tsne(self, results: np.ndarray, labels: pd.Series) -> None:
         """
         :param results: results of the TSNE algorithm.
+        :param labels: true labels of the data.
         :return: plot an image of the results.
         """
         tsne_res = pd.DataFrame()
         tsne_res['tsne-1'] = results[:, 0]
         tsne_res['tsne-2'] = results[:, 1]
+        tsne_res['dendrite_type'] = labels
         plt.figure(figsize=(16, 10))
-        sns.scatterplot(x="tsne-1", y="tsne-2", data=tsne_res, legend="full", alpha=0.3)
+        sns.scatterplot(x="tsne-1", y="tsne-2", hue="dendrite_type", data=tsne_res, legend="full", alpha=0.3)
         plt.title("t-SNE plot of the extracted cell type features data")
         plt.show()
 
@@ -64,7 +67,7 @@ if __name__ == '__main__':
     data = pd.read_csv(dataframe_path + '\\' + dataframe_name)
     tsne = Tsne(data)
     res = tsne.train_and_test()
-    tsne.plot_tsne(res)
+    tsne.plot_tsne(res, data["dendrite_type"])
 
 
 
