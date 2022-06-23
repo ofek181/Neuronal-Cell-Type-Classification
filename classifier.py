@@ -12,7 +12,7 @@ class Model(ABC):
         :param batch_size: batch size for training.
         :param n_epochs: number of epochs during training.
         """
-        self._data = data
+        self.data = data
         self._num_layers = num_layers
         self._num_nodes = num_neurons
         self._batch_size = batch_size
