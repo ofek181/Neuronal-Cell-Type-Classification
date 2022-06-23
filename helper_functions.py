@@ -1,7 +1,8 @@
+import numpy as np
 from sklearn.metrics import accuracy_score, f1_score, precision_score, recall_score, roc_auc_score
 
 
-def calculate_metrics(y_true: list, y_pred: list) -> tuple:
+def calculate_metrics(y_true: np.ndarray, y_pred: np.ndarray) -> tuple:
     """
     :param y_true: true labels provided by the dataset.
     :param y_pred: predicted labels provided by the model.
