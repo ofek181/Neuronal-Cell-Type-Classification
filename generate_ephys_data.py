@@ -1,4 +1,4 @@
-#!/usr/bin/env python -W ignore::DeprecationWarning
+#!/usr/bin/env python -W ignore
 from allensdk.core.cell_types_cache import CellTypesCache
 from allensdk.api.queries.cell_types_api import CellTypesApi
 from allensdk.ephys.ephys_extractor import EphysSweepFeatureExtractor
@@ -9,7 +9,7 @@ from time_series_to_image import activity_to_image_gaf
 from imageio import imwrite
 from tqdm import tqdm
 import warnings
-warnings.simplefilter("ignore", DeprecationWarning)
+warnings.simplefilter("ignore")
 
 dir_path = os.path.dirname(os.path.realpath(__file__))
 
@@ -145,6 +145,6 @@ class Downloader:
 
 
 if __name__ == '__main__':
-    downloader = Downloader(human=True)
+    downloader = Downloader(human=False)
     downloader.generate_data()
     downloader.create_ephys_dataframe()
