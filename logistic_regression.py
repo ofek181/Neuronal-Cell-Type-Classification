@@ -29,13 +29,13 @@ class LogisticClassifier(Model):
         """
         :return: results of the logistic regression classifier on the testing data.
         """
-        df = self._data
+        df = self.data
         df['dendrite_type'] = pd.Categorical(df['dendrite_type'])
         df['dendrite_type'] = df['dendrite_type'].cat.codes
         y = df.pop('dendrite_type')
         y = y.values.astype(float)
         x = df.values
-        kf = StratifiedKFold(n_splits=3)
+        kf = StratifiedKFold(n_splits=5)
         stats = []
         for train_index, test_index in kf.split(x, y):
             scaler = StandardScaler()
