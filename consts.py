@@ -1,0 +1,1 @@
+GAF_IMAGE_SIZE = 224
