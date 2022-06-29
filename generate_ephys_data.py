@@ -1,23 +1,22 @@
-#!/usr/bin/env python -W ignore
 from allensdk.core.cell_types_cache import CellTypesCache
 from allensdk.api.queries.cell_types_api import CellTypesApi
 from allensdk.ephys.ephys_extractor import EphysSweepFeatureExtractor
 import pandas as pd
 import numpy as np
 import os
+from consts import GAF_IMAGE_SIZE
 from time_series_to_image import activity_to_image_gaf
 from imageio import imwrite
 from tqdm import tqdm
 import warnings
+
 warnings.simplefilter("ignore")
-
 dir_path = os.path.dirname(os.path.realpath(__file__))
-
 dataframe_path = dir_path + '\\data\\dataframe'
 raw_data_path = dir_path + '\\data\\raw_data'
 gaf_path = dir_path + '\\data\\images\\gaf'
-
 sample_rate = 50000
+idx = 0
 
 
 class Downloader:
@@ -31,22 +30,31 @@ class Downloader:
         else:
             self.cells = self.ctc.get_cells(species=[CellTypesApi.MOUSE])
         self.esf = EphysSweepFeatureExtractor
+        rgb = 3
+        self.images = np.zeros((len(self.cells), GAF_IMAGE_SIZE, GAF_IMAGE_SIZE, rgb))
+        self.labels = np.zeros(len(self.cells))
 
-    @staticmethod
-    def _save_gaf_image(response: np.ndarray, cell_id: str) -> None:
+    def _save_gaf_image(self, response: np.ndarray, cell_id: str) -> None:
         """
         :param response: response for the sweep data of the cell.
         :param cell_id: id of cell.
         :return: saves a Gramian Angular Field image to path.
         """
+        global idx
         response_gaf = activity_to_image_gaf(response)
         image_name = '{}_gaf.png'.format(cell_id)
         scaled_image = 255 * (response_gaf + 1) / 2
         img = scaled_image.astype(np.uint8)
+        self.images[idx, :, :, :] = img
+        # spiny = 1, aspiny = 0
+        if self.cells[idx]['dendrite_type'] == 'spiny':
+            self.labels[idx] = 1
+        if self.cells[idx]['dendrite_type'] == 'sparsely spiny':
+            self.labels[idx] = 2
         imwrite(os.path.join(gaf_path, image_name), img)
+        idx += 1
 
-    @staticmethod
-    def save_gaf_and_raw_data(sweep_data: dict, cell_id: str) -> None:
+    def save_gaf_and_raw_data(self, sweep_data: dict, cell_id: str) -> None:
         """
         :param sweep_data: sweep data for cell sweep.
         :param cell_id: id of cell.
@@ -58,7 +66,7 @@ class Downloader:
         resample = int(sweep_data['sampling_rate'] / sample_rate)
         response = sweep_data['response'][relevant_signal][stimulation_given][::resample]
         np.save(raw_data_file, response)
-        Downloader._save_gaf_image(response, cell_id)
+        self._save_gaf_image(response, cell_id)
 
     @staticmethod
     def save_ephys_data(ephys_data: dict) -> None:
@@ -131,8 +139,6 @@ class Downloader:
                 data_set = self.ctc.get_ephys_data(cell_id)
 
             for sweep_num in [noise_sweep_number[0]]:
-                # print('Processing cell: {} sweep: {}. Cell {}/{}'.format(cell_id, sweep_num,
-                #                                                          ind + 1, len(self.cells)))
                 this_cell_id = '{}_{}'.format(cell_id, sweep_num)
                 sweep_data = data_set.get_sweep(sweep_num)
                 ephys_feats = self.get_ephys_features(sweep_data)
@@ -142,6 +148,10 @@ class Downloader:
                                             'structure_area_abbrev': cell['structure_area_abbrev'],
                                             'sampling_rate': sweep_data['sampling_rate']}, **ephys_feats}
         self.save_ephys_data(cell_db)
+        name_images = '{}/images.npy'.format(gaf_path)
+        name_labels = '{}/labels.npy'.format(gaf_path)
+        np.save(name_images, self.images)
+        np.save(name_labels, self.labels)
 
 
 if __name__ == '__main__':
