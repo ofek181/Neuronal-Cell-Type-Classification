@@ -65,34 +65,22 @@ class ConvNet:
         base_model = VGG16(input_shape=(GAF_IMAGE_SIZE, GAF_IMAGE_SIZE, 3), weights='imagenet', include_top=False)
         base_model.trainable = False
 
+        norm = BatchNormalization()
         flatten = Flatten()
-        drop1 = Dropout(self.drop_rate)
+
         dense1 = Dense(self.dense_size[0], activation='relu',
                        kernel_regularizer=l2(self.weight_decay),
                        bias_regularizer=l2(self.weight_decay))
-        norm1 = BatchNormalization()
-
-        drop2 = Dropout(self.drop_rate)
         dense2 = Dense(self.dense_size[1], activation='relu',
                        kernel_regularizer=l2(self.weight_decay),
                        bias_regularizer=l2(self.weight_decay))
+        drop_layer = Dropout(self.drop_rate)
+
         prediction = Dense(2, activation='softmax')
 
-        model = Sequential([base_model, flatten, drop1, dense1, norm1, drop2, dense2, prediction])
-        model.summary()
-
-        # out = GlobalAveragePooling2D()(out)
-        # out = BatchNormalization()(out)
-        # out = Dense(self.dense_size[0], activation="relu", kernel_regularizer=l2(self.weight_decay),
-        #             bias_regularizer=l2(self.weight_decay))(out)
-        # out = Dropout(self.drop_rate)(out)
-        # out = BatchNormalization()(out)
-        # out = Dense(self.dense_size[1], activation="relu", kernel_regularizer=l2(self.weight_decay),
-        #             bias_regularizer=l2(self.weight_decay))(out)
-        # out = Dropout(self.drop_rate)(out)
-        # preds = Dense(1, activation="tanh")(out)
-        # model = keras.Model(inputs=base.input, outputs=preds)
+        model = Sequential([base_model, norm, flatten, dense1, dense2, drop_layer, prediction])
         # model.summary()
+
         return model
 
     def train_and_test(self, lr: float, n_epochs: int, batch_size: int, optim: str = 'adam', moment: float = 0) -> pd.DataFrame:
@@ -148,25 +136,25 @@ class ConvNet:
 
 
 if __name__ == '__main__':
-    lrs = [0.00001, 0.0001, 0.001, 0.01, 0.1]
-    batches = [128, 64, 32]
-    opts = ['sgd', 'rmsprop', 'adam']
-    mmnts = [0.0, 0.2, 0.5, 0.9]
-    wds = [0.0001, 0.001, 0.01]
-    denses = [[32, 16], [64, 32], [128, 64], [256, 128]]
-    drops = [0.0, 0.2, 0.5]
+    lrs = [0.005, 0.001, 0.0001, 0.00001]
+    batches = [64, 32]
+    opts = ['adam', 'rmsprop', 'sgd']
+    mmnts = [0.2, 0.5, 0.8]
+    wds = [1, 0.5, 0.1, 0.01, 0.001]
+    denses = [[4096, 2000], [4096, 1000], [1024, 512]]
+    drops = [0.5, 0.3, 0.1]
     data = gaf_path + '\\images.npy'
     labels = gaf_path + '\\labels.npy'
     for lr in lrs:
         for batch in batches:
-            for opt in opts:
+            for drop in drops:
                 for mmnt in mmnts:
-                    for wd in wds:
-                        for dense in denses:
-                            for drop in drops:
-                                print("Learning rate: {}, Batch size: {}, Optimizer: {}, Moment: {}, Weight decay: {}, Dense: size: {}, Drop rate: {}".format(lr, batch, opt, mmnt, wd, dense, drop))
+                    for opt in opts:
+                        for wd in wds:
+                            for dense in denses:
+                                print("Dense Size: {}, Weight Decay: {}, Optimizer: {}, Moment: {}, Drop Rate: {}, Batch Size: {}, Learning Rate: {}".format(dense, wd, opt, mmnt, drop, batch, lr))
                                 cnn = ConvNet(weight_decay=wd, dense_size=dense, drop_rate=drop, data_file=data, labels_file=labels)
-                                res = cnn.train_and_test(lr=lr, n_epochs=20, batch_size=batch, optim=opt, moment=mmnt)
+                                res = cnn.train_and_test(lr=lr, n_epochs=10, batch_size=batch, optim=opt, moment=mmnt)
                                 print("Accuracy: {}".format(res))
 
 
