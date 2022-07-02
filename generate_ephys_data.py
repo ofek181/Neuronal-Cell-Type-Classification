@@ -47,6 +47,8 @@ class Downloader:
         img = scaled_image.astype(np.uint8)
         self.images[idx, :, :, :] = img
         # spiny = 1, aspiny = 0
+        if self.cells[idx]['dendrite_type'] == 'aspiny':
+            self.labels[idx] = 0
         if self.cells[idx]['dendrite_type'] == 'spiny':
             self.labels[idx] = 1
         if self.cells[idx]['dendrite_type'] == 'sparsely spiny':
