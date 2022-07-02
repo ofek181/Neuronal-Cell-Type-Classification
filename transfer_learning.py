@@ -23,6 +23,7 @@ if tf.test.gpu_device_name():
 else:
     print("No GPU found")
 
+# TODO there might be something wrong with the data
 
 # class CustomCallback(Callback):
 #     def __init__(self, model, x_test, y_test):
@@ -89,7 +90,8 @@ class ConvNet:
         """
         # compile model
         if optim == 'adam':
-            opt = Adam(learning_rate=lr, decay=lr/n_epochs)
+            # opt = Adam(learning_rate=lr, decay=lr/n_epochs)
+            opt = Adam(learning_rate=lr)
         if optim == 'sgd':
             opt = SGD(learning_rate=lr, momentum=moment)
         if optim == 'rmsprop':
@@ -98,7 +100,7 @@ class ConvNet:
         self.model.compile(optimizer=opt, loss='categorical_crossentropy', metrics=['accuracy'])
         # fit model
         history = self.model.fit(self.x_train, self.y_train, epochs=n_epochs,
-                                 batch_size=batch_size, validation_data=(self.x_val, self.y_val))
+                                 batch_size=batch_size, validation_data=(self.x_val[:], self.y_val))
 
         # history = self.model.fit(self.x_train, self.y_train,
         #                          epochs=n_epochs, callbacks=[CustomCallback(self.model, self.x_val, self.y_val)],
@@ -136,12 +138,12 @@ class ConvNet:
 
 
 if __name__ == '__main__':
-    lrs = [0.005, 0.001, 0.0001, 0.00001]
+    lrs = [0.001, 0.0005, 0.0001, 0.00001]
     batches = [64, 32]
     opts = ['adam', 'rmsprop', 'sgd']
     mmnts = [0.2, 0.5, 0.8]
-    wds = [1, 0.5, 0.1, 0.01, 0.001]
-    denses = [[4096, 2000], [4096, 1000], [1024, 512]]
+    wds = [1, 0.5, 0.1, 0.01]
+    denses = [[1000, 100], [1000, 500], [500, 100], [64, 32]]
     drops = [0.5, 0.3, 0.1]
     data = gaf_path + '\\images.npy'
     labels = gaf_path + '\\labels.npy'
@@ -154,8 +156,11 @@ if __name__ == '__main__':
                             for dense in denses:
                                 print("Dense Size: {}, Weight Decay: {}, Optimizer: {}, Moment: {}, Drop Rate: {}, Batch Size: {}, Learning Rate: {}".format(dense, wd, opt, mmnt, drop, batch, lr))
                                 cnn = ConvNet(weight_decay=wd, dense_size=dense, drop_rate=drop, data_file=data, labels_file=labels)
-                                res = cnn.train_and_test(lr=lr, n_epochs=10, batch_size=batch, optim=opt, moment=mmnt)
+                                res = cnn.train_and_test(lr=lr, n_epochs=15, batch_size=batch, optim=opt, moment=mmnt)
                                 print("Accuracy: {}".format(res))
+    #
+    # cnn = ConvNet(weight_decay=0.1, dense_size=[1024, 256], drop_rate=0.5, data_file=data, labels_file=labels)
+    # res = cnn.train_and_test(lr=0.00001, n_epochs=100, batch_size=64, optim='rmsprop', moment=0.3)
+    # print("Accuracy: {}".format(res))
 
 
-# TODO understand why the network only outputs 1 label instead of 2
