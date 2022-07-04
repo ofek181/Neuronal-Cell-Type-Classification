@@ -4,7 +4,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import tensorflow as tf
 from keras.applications import VGG16
-from keras.layers import Dense, Flatten, Conv2D, Dropout, GlobalAveragePooling2D, BatchNormalization
+from keras.layers import Dense, Flatten, Conv2D, Dropout, GlobalAveragePooling2D, LayerNormalization
 from keras.utils import to_categorical
 from keras.optimizers import Adam, SGD, RMSprop
 from keras.callbacks import Callback
@@ -14,7 +14,7 @@ from keras.regularizers import l2
 from helper_functions import calculate_metrics
 from consts import GAF_IMAGE_SIZE
 dir_path = os.path.dirname(os.path.realpath(__file__))
-gaf_path = dir_path + '\\data\\images\\gaf'
+npy_path = dir_path + '\\data\\images\\npy'
 
 os.environ['CUDA_VISIBLE_DEVICES'] = '-1'
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
@@ -35,6 +35,8 @@ else:
 #     def on_epoch_end(self, epoch, logs=None):
 #         y_pred = self.model.predict(self.x_test)
 #         print('y predicted: ', y_pred)
+
+callbacks = [tf.keras.callbacks.EarlyStopping(patience=10, restore_best_weights=True)]
 
 
 class ConvNet:
@@ -66,20 +68,18 @@ class ConvNet:
         base_model = VGG16(input_shape=(GAF_IMAGE_SIZE, GAF_IMAGE_SIZE, 3), weights='imagenet', include_top=False)
         base_model.trainable = False
 
-        norm = BatchNormalization()
-        flatten = Flatten()
-
+        norm = LayerNormalization()
+        gap = GlobalAveragePooling2D()
         dense1 = Dense(self.dense_size[0], activation='relu',
                        kernel_regularizer=l2(self.weight_decay),
                        bias_regularizer=l2(self.weight_decay))
+        drop_layer = Dropout(self.drop_rate)
         dense2 = Dense(self.dense_size[1], activation='relu',
                        kernel_regularizer=l2(self.weight_decay),
                        bias_regularizer=l2(self.weight_decay))
-        drop_layer = Dropout(self.drop_rate)
-
         prediction = Dense(2, activation='softmax')
 
-        model = Sequential([base_model, norm, flatten, dense1, dense2, drop_layer, prediction])
+        model = Sequential([base_model, norm, gap, dense1, drop_layer, dense2, prediction])
         # model.summary()
 
         return model
@@ -99,12 +99,10 @@ class ConvNet:
 
         self.model.compile(optimizer=opt, loss='categorical_crossentropy', metrics=['accuracy'])
         # fit model
-        history = self.model.fit(self.x_train, self.y_train, epochs=n_epochs,
-                                 batch_size=batch_size, validation_data=(self.x_val[:], self.y_val))
 
-        # history = self.model.fit(self.x_train, self.y_train,
-        #                          epochs=n_epochs, callbacks=[CustomCallback(self.model, self.x_val, self.y_val)],
-        #                          batch_size=batch_size, validation_data=(self.x_val, self.y_val))
+        history = self.model.fit(self.x_train, self.y_train,
+                                 epochs=n_epochs, callbacks=callbacks,
+                                 batch_size=batch_size, validation_data=(self.x_val, self.y_val))
 
         # evaluate model
         loss, acc = self.model.evaluate(self.x_test, self.y_test, verbose=2)
@@ -145,8 +143,8 @@ if __name__ == '__main__':
     wds = [1, 0.5, 0.1, 0.01]
     denses = [[1000, 100], [1000, 500], [500, 100], [64, 32]]
     drops = [0.5, 0.3, 0.1]
-    data = gaf_path + '\\images.npy'
-    labels = gaf_path + '\\labels.npy'
+    data = npy_path + '\\images.npy'
+    labels = npy_path + '\\labels.npy'
     for lr in lrs:
         for batch in batches:
             for drop in drops:
