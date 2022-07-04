@@ -13,8 +13,18 @@ import warnings
 warnings.simplefilter("ignore")
 dir_path = os.path.dirname(os.path.realpath(__file__))
 dataframe_path = dir_path + '\\data\\dataframe'
+dataframe_path_human = dataframe_path + '\\human'
+dataframe_path_mouse = dataframe_path + '\\mouse'
 raw_data_path = dir_path + '\\data\\raw_data'
-gaf_path = dir_path + '\\data\\images\\gaf'
+raw_data_path_human = raw_data_path + '\\human'
+raw_data_path_mouse = raw_data_path + '\\mouse'
+gaf_path = dir_path + '\\data\\images'
+gaf_npy_path = gaf_path + '\\npy'
+gaf_npy_path_human = gaf_npy_path + '\\human'
+gaf_npy_path_mouse = gaf_npy_path + '\\mouse'
+gaf_png_path = gaf_path + '\\png'
+gaf_png_path_human = gaf_png_path + '\\human'
+gaf_png_path_mouse = gaf_png_path + '\\mouse'
 sample_rate = 50000
 idx = 0
 
@@ -29,6 +39,7 @@ class Downloader:
             self.cells = self.ctc.get_cells(species=[CellTypesApi.HUMAN])
         else:
             self.cells = self.ctc.get_cells(species=[CellTypesApi.MOUSE])
+        self.human = human
         self.esf = EphysSweepFeatureExtractor
         rgb = 3
         self.images = np.zeros((len(self.cells), GAF_IMAGE_SIZE, GAF_IMAGE_SIZE, rgb))
@@ -46,14 +57,18 @@ class Downloader:
         scaled_image = 255 * (response_gaf + 1) / 2
         img = scaled_image.astype(np.uint8)
         self.images[idx, :, :, :] = img
-        # spiny = 1, aspiny = 0
         if self.cells[idx]['dendrite_type'] == 'aspiny':
             self.labels[idx] = 0
+            if self.human:
+                imwrite(os.path.join(gaf_png_path_human + '\\aspiny', image_name), img)
+            else:
+                imwrite(os.path.join(gaf_png_path_mouse + '\\aspiny', image_name), img)
         if self.cells[idx]['dendrite_type'] == 'spiny':
             self.labels[idx] = 1
-        if self.cells[idx]['dendrite_type'] == 'sparsely spiny':
-            self.labels[idx] = 2
-        imwrite(os.path.join(gaf_path, image_name), img)
+            if self.human:
+                imwrite(os.path.join(gaf_png_path_human + '\\spiny', image_name), img)
+            else:
+                imwrite(os.path.join(gaf_png_path_mouse + '\\spiny', image_name), img)
         idx += 1
 
     def save_gaf_and_raw_data(self, sweep_data: dict, cell_id: str) -> None:
@@ -62,7 +77,10 @@ class Downloader:
         :param cell_id: id of cell.
         :return: saves a Gramian Angular Field image to path and raw data to a different path.
         """
-        raw_data_file = '{}/{}.npy'.format(raw_data_path, cell_id)
+        if self.human:
+            raw_data_file = '{}/{}.npy'.format(raw_data_path_human, cell_id)
+        else:
+            raw_data_file = '{}/{}.npy'.format(raw_data_path_mouse, cell_id)
         relevant_signal = range(*sweep_data['index_range'])
         stimulation_given = np.where(sweep_data['stimulus'][relevant_signal] > 0)[0]
         resample = int(sweep_data['sampling_rate'] / sample_rate)
@@ -70,8 +88,7 @@ class Downloader:
         np.save(raw_data_file, response)
         self._save_gaf_image(response, cell_id)
 
-    @staticmethod
-    def save_ephys_data(ephys_data: dict) -> None:
+    def save_ephys_data(self, ephys_data: dict) -> None:
         """
         :param ephys_data: the cell electrophysiology data.
         :return: saves data to path in pkl and csv formats.
@@ -83,7 +100,10 @@ class Downloader:
         df['layer'] = df['layer'].astype('int')
         df = df[df['dendrite_type'].isin(['spiny', 'aspiny'])]
         df['file_name'] = df.index
-        df.to_csv(os.path.join(dataframe_path, 'extracted_mean_ephys_data.csv'))
+        if self.human:
+            df.to_csv(os.path.join(dataframe_path_human, 'extracted_mean_ephys_data.csv'))
+        else:
+            df.to_csv(os.path.join(dataframe_path_mouse, 'extracted_mean_ephys_data.csv'))
 
     @staticmethod
     def get_ephys_features(sweep_data: dict) -> dict:
@@ -128,7 +148,7 @@ class Downloader:
             noise_sweep_number = [x['sweep_number'] for x in sweeps
                                   if x['stimulus_name'] in ['Noise 1', 'Noise 2']
                                   and x['num_spikes'] is not None
-                                  and x['num_spikes'] > 15]
+                                  and x['num_spikes'] > 10]
             if not noise_sweep_number:
                 continue
 
@@ -150,13 +170,17 @@ class Downloader:
                                             'structure_area_abbrev': cell['structure_area_abbrev'],
                                             'sampling_rate': sweep_data['sampling_rate']}, **ephys_feats}
         self.save_ephys_data(cell_db)
-        name_images = '{}/images.npy'.format(gaf_path)
-        name_labels = '{}/labels.npy'.format(gaf_path)
-        np.save(name_images, self.images)
-        np.save(name_labels, self.labels)
+        if self.human:
+            imgs = '{}/images.npy'.format(gaf_npy_path_human)
+            lbls = '{}/labels.npy'.format(gaf_npy_path_human)
+        else:
+            imgs = '{}/images.npy'.format(gaf_npy_path_mouse)
+            lbls = '{}/labels.npy'.format(gaf_npy_path_mouse)
+        np.save(imgs, self.images)
+        np.save(lbls, self.labels)
 
 
 if __name__ == '__main__':
-    downloader = Downloader(human=False)
+    downloader = Downloader(human=True)
     downloader.generate_data()
     downloader.create_ephys_dataframe()
