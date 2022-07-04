@@ -41,13 +41,13 @@ print("\nBlue channel")
 print(b.shape)
 
 
-pca_r = PCA(n_components=250)
+pca_r = PCA(n_components=1)
 pca_r_trans = pca_r.fit_transform(r)
 
-pca_g = PCA(n_components=250)
+pca_g = PCA(n_components=1)
 pca_g_trans = pca_g.fit_transform(g)
 
-pca_b = PCA(n_components=100)
+pca_b = PCA(n_components=1)
 pca_b_trans = pca_b.fit_transform(b)
 
 pca_data = np.concatenate((pca_r_trans, pca_g_trans, pca_b_trans), axis=1)
@@ -64,18 +64,19 @@ x_train, x_val, y_train, y_val = train_test_split(pca_data, y, train_size=0.9, r
 x_train, x_test, y_train, y_test = train_test_split(x_train, y_train, train_size=0.78, random_state=1)
 
 idx = 0
-for lr in [0.0001, 0.001, 0.00001, 0.01]:
-    for wd in [10, 1, 0.1, 0.01, 0.001, 0.0001]:
+for lr in [0.01, 0.001, 0.0005, 0.0001, 0.01]:
+    for wd in [0.0005, 0.001, 0.01, 0.1]:
         for drop in [0, 0.2, 0.5, 0.6]:
-            for size in [1000, 500, 200, 100, 50]:
+            for size in [600, 200, 100, 10]:
                 norm1 = BatchNormalization()
                 dense1 = Dense(x_train.shape[1], activation='relu', kernel_regularizer=l2(wd), bias_regularizer=l2(wd))
                 drop1 = Dropout(drop)
                 norm2 = BatchNormalization()
                 dense2 = Dense(size, activation='relu', kernel_regularizer=l2(wd), bias_regularizer=l2(wd))
                 drop2 = Dropout(drop)
+                dense3 = Dense(size//2, activation='relu', kernel_regularizer=l2(wd), bias_regularizer=l2(wd))
                 prediction = Dense(1, activation='sigmoid')
-                model = Sequential([norm1, dense1, drop1, norm2, dense2, drop2, prediction])
+                model = Sequential([norm1, dense1, drop1, norm2, dense2, drop2, dense3, prediction])
 
                 opt = Adam(learning_rate=lr, decay=lr/100)
                 model.compile(loss='binary_crossentropy', optimizer='adam', metrics=['accuracy'])
