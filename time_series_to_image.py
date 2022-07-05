@@ -16,3 +16,5 @@ def activity_to_image_gaf(activity: np.array) -> np.ndarray:
         image[:, :, i] = gaf.fit_transform(segment.reshape(1, -1))
     return image
 
+# TODO try and make a gray-scaled image of gaf instead of RGB
+
