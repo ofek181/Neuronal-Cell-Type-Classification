@@ -9,7 +9,7 @@ from keras.optimizers import Adam, SGD, RMSprop
 from keras.utils import to_categorical
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import StandardScaler
-from sklearn.metrics import confusion_matrix
+from sklearn.metrics import confusion_matrix, accuracy_score
 import os
 import matplotlib.pyplot as plt
 
@@ -77,8 +77,9 @@ class DANNClassifier(Model):
         label = Dense(n_classes, activation='softmax', name='l_pred')(x)
 
         # Domain predictor
-        grad = GradientReversal(self.lamda)(x)
-        domain = Dense(n_domains, activation='softmax', name='d_pred')(grad)
+        Flip = GradientReversal(self.lamda)
+        flipped_grad = Flip(x)
+        domain = Dense(n_domains, activation='softmax', name='d_pred')(flipped_grad)
 
         # Define model using Keras' functional API
         model = Model(inputs=inputs, outputs=[label, domain])
@@ -117,12 +118,32 @@ class DANNClassifier(Model):
         # self.model.summary()
         return acc
 
-    def get_loss(self, label_pred, labels_true, domain_pred=None, domain_true=None):
-        return self._loss_func(label_pred, labels_true) + self._loss_func(domain_pred, domain_true)
-
-    @staticmethod
-    def _loss_func(input_logits, target_labels):
-        return tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(logits=input_logits, labels=target_labels))
+    def test(self, x_test, y_test) -> tuple:
+        # calculate test loss and accuracy
+        cce = tf.keras.losses.CategoricalCrossentropy()
+        predictions = self.model.predict(x_test)
+        l_pred = predictions[0]
+        d_pred = predictions[1]
+        l_true = np.argmax(y_test[:, 0, :], axis=1)
+        d_true = np.argmax(y_test[:, 1, :], axis=1)
+        loss = cce(y_test[:, 0, :], l_pred).numpy()
+        l_pred = np.argmax(l_pred, axis=1)
+        d_pred = np.argmax(d_pred, axis=1)
+        l_acc = accuracy_score(l_true, l_pred)
+        d_acc = accuracy_score(d_true, d_pred)
+        print('====================================================')
+        print("Label Accuracy: " + str(l_acc))
+        print("Domain Accuracy: " + str(d_acc))
+        # # plot confusion matrix
+        # y_pred = self.model.predict(x_test)
+        # matrix = confusion_matrix(y_test.argmax(axis=1), y_pred.argmax(axis=1))
+        # plt.figure()
+        # label_names = ['aspiny', 'spiny']
+        # s = sns.heatmap(matrix / np.sum(matrix), annot=True, fmt='.2%',
+        #             cmap='Blues', xticklabels=label_names, yticklabels=label_names)
+        # s.set(xlabel='Predicted label', ylabel='True label')
+        # plt.draw()
+        return loss, l_acc
 
     @staticmethod
     def _create_label_predictor() -> list:
@@ -173,8 +194,10 @@ class DANNClassifier(Model):
     @staticmethod
     def plot_history(history) -> None:
         plt.figure()
-        plt.plot(history.history['accuracy'], label='train_accuracy')
-        plt.plot(history.history['val_accuracy'], label='val_accuracy')
+        plt.plot(history.history['l_pred_accuracy'], label='label train accuracy')
+        plt.plot(history.history['val_l_pred_accuracy'], label='label val accuracy')
+        plt.plot(history.history['d_pred_accuracy'], label='domain train accuracy')
+        plt.plot(history.history['val_d_pred_accuracy'], label='domain val accuracy')
         plt.xlabel('Epoch')
         plt.ylabel('Accuracy')
         plt.ylim([0.5, 1])
@@ -198,9 +221,9 @@ def get_data() -> pd.DataFrame:
 
 def main():
     data = get_data()
-    DANN = DANNClassifier(db=data, n_layers=4, weight_decay=0.01, dense_size=[27, 64, 128, 32],
-                          activation_function=['swish', 'swish', 'swish', 'swish'], learning_rate=0.00005,
-                          drop_rate=[0, 0.1, 0.2, 0.3], batch_size=16, n_epochs=100, optimizer='adam')
+    DANN = DANNClassifier(db=data, n_layers=4, weight_decay=0.0001, dense_size=[27, 64, 128, 32],
+                          activation_function=['swish', 'swish', 'swish', 'swish'], learning_rate=0.0005,
+                          drop_rate=[0, 0.2, 0.2, 0.2], batch_size=16, n_epochs=100, optimizer='adam', lamda=2)
     DANN.train_and_test()
 
     # show matplotlib graphs
