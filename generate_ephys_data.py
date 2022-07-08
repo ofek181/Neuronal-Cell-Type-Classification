@@ -12,19 +12,19 @@ import warnings
 
 warnings.simplefilter("ignore")
 dir_path = os.path.dirname(os.path.realpath(__file__))
-dataframe_path = dir_path + '\\data\\dataframe'
-dataframe_path_human = dataframe_path + '\\human'
-dataframe_path_mouse = dataframe_path + '\\mouse'
-raw_data_path = dir_path + '\\data\\raw_data'
-raw_data_path_human = raw_data_path + '\\human'
-raw_data_path_mouse = raw_data_path + '\\mouse'
-gaf_path = dir_path + '\\data\\images'
-gaf_npy_path = gaf_path + '\\npy'
-gaf_npy_path_human = gaf_npy_path + '\\human'
-gaf_npy_path_mouse = gaf_npy_path + '\\mouse'
-gaf_png_path = gaf_path + '\\png'
-gaf_png_path_human = gaf_png_path + '\\human'
-gaf_png_path_mouse = gaf_png_path + '\\mouse'
+dataframe_path = dir_path + '/data/dataframe'
+dataframe_path_human = dataframe_path + '/human'
+dataframe_path_mouse = dataframe_path + '/mouse'
+raw_data_path = dir_path + '/data/raw_data'
+raw_data_path_human = raw_data_path + '/human'
+raw_data_path_mouse = raw_data_path + '/mouse'
+gaf_path = dir_path + '/data/images'
+gaf_npy_path = gaf_path + '/npy'
+gaf_npy_path_human = gaf_npy_path + '/human'
+gaf_npy_path_mouse = gaf_npy_path + '/mouse'
+gaf_png_path = gaf_path + '/png'
+gaf_png_path_human = gaf_png_path + '/human'
+gaf_png_path_mouse = gaf_png_path + '/mouse'
 sample_rate = 50000
 idx = 0
 
@@ -60,15 +60,15 @@ class Downloader:
         if self.cells[idx]['dendrite_type'] == 'aspiny':
             self.labels[idx] = 0
             if self.human:
-                imwrite(os.path.join(gaf_png_path_human + '\\aspiny', image_name), img)
+                imwrite(os.path.join(gaf_png_path_human + '/aspiny', image_name), img)
             else:
-                imwrite(os.path.join(gaf_png_path_mouse + '\\aspiny', image_name), img)
+                imwrite(os.path.join(gaf_png_path_mouse + '/aspiny', image_name), img)
         if self.cells[idx]['dendrite_type'] == 'spiny':
             self.labels[idx] = 1
             if self.human:
-                imwrite(os.path.join(gaf_png_path_human + '\\spiny', image_name), img)
+                imwrite(os.path.join(gaf_png_path_human + '/spiny', image_name), img)
             else:
-                imwrite(os.path.join(gaf_png_path_mouse + '\\spiny', image_name), img)
+                imwrite(os.path.join(gaf_png_path_mouse + '/spiny', image_name), img)
         idx += 1
 
     def save_gaf_and_raw_data(self, sweep_data: dict, cell_id: str) -> None:
