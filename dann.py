@@ -19,26 +19,19 @@ n_domains = 2
 
 # Gradient Reversal Layer
 class GradientReversal(Layer):
-    def __init__(self, lamda: float = 1.0, **kwargs):
-        super(GradientReversal, self).__init__(**kwargs)
-        self.lamda = lamda
-
-    @staticmethod
     @tf.custom_gradient
-    def reverse_gradient(x, lamda):
-        return tf.identity(x), lambda dy: (-dy, None)
+    def grad_reverse(self, x):
+        y = tf.identity(x)
 
-    def call(self, x):
-        return self.reverse_gradient(x, self.lamda)
+        def custom_grad(dy):
+            return tf.negative(dy)
+        return y, custom_grad
 
-    def compute_mask(self, inputs, mask=None):
-        return mask
+    def __init__(self, **kwargs):
+        super(GradientReversal, self).__init__(**kwargs)
 
-    def compute_output_shape(self, input_shape):
-        return input_shape
-
-    def get_config(self):
-        return super(GradientReversal, self).get_config() | {'λ': self.lamda}
+    def call(self, inputs, *args, **kwargs):
+        return self.grad_reverse(inputs)
 
 
 class DANNClassifier(Model):
@@ -77,8 +70,7 @@ class DANNClassifier(Model):
         label = Dense(n_classes, activation='softmax', name='l_pred')(x)
 
         # Domain predictor
-        Flip = GradientReversal(self.lamda)
-        flipped_grad = Flip(x)
+        flipped_grad = GradientReversal()(x)
         domain = Dense(n_domains, activation='softmax', name='d_pred')(flipped_grad)
 
         # Define model using Keras' functional API
@@ -100,8 +92,8 @@ class DANNClassifier(Model):
             opt = RMSprop(learning_rate=self.lr, decay=self.lr/self.n_epochs)
 
         # Compile model
-        self.model.compile(loss=['categorical_crossentropy',
-                                 'categorical_crossentropy'], optimizer=opt, metrics="accuracy")
+        self.model.compile(loss={'l_pred': 'categorical_crossentropy','d_pred': 'categorical_crossentropy'},
+                           optimizer=opt, metrics="accuracy")
         # fit model
         history = self.model.fit(x_train, {'l_pred': y_train[:, 0, :], 'd_pred': y_train[:, 1, :]},
                                  validation_data=(x_val, {'l_pred': y_val[:, 0, :], 'd_pred': y_val[:, 1, :]}),
@@ -221,9 +213,9 @@ def get_data() -> pd.DataFrame:
 
 def main():
     data = get_data()
-    DANN = DANNClassifier(db=data, n_layers=4, weight_decay=0.0001, dense_size=[27, 64, 128, 32],
-                          activation_function=['swish', 'swish', 'swish', 'swish'], learning_rate=0.0005,
-                          drop_rate=[0, 0.2, 0.2, 0.2], batch_size=16, n_epochs=100, optimizer='adam', lamda=2)
+    DANN = DANNClassifier(db=data, n_layers=4, weight_decay=0.1, dense_size=[27, 64, 128, 32],
+                          activation_function=['swish', 'swish', 'swish', 'swish'], learning_rate=0.001,
+                          drop_rate=[0, 0.2, 0.2, 0.2], batch_size=16, n_epochs=100, optimizer='adam')
     DANN.train_and_test()
 
     # show matplotlib graphs
