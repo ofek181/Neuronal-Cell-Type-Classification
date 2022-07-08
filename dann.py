@@ -1,16 +1,19 @@
-"""
-MNIST - MNIST-M Domain Adaptation
-"""
-
 import tensorflow as tf
 import numpy as np
+import pandas as pd
 from keras import Sequential, Model
-from keras.layers import Dense, Flatten, Conv2D, Dropout, MaxPool2D, BatchNormalization, Dropout
+from keras.layers import Dense, Flatten, BatchNormalization, Dropout
+from keras.regularizers import l2
+from keras.optimizers import Adam, SGD, RMSprop
+from keras.utils import to_categorical
+from sklearn.model_selection import train_test_split
+from sklearn.preprocessing import StandardScaler
+from sklearn.metrics import confusion_matrix
 import os
-import shutil
-import sys
 import matplotlib.pyplot as plt
-import h5py
+
+n_classes = 2
+n_domains = 2
 
 
 # Gradient Reversal Layer
@@ -33,184 +36,170 @@ class GradientReversalLayer(tf.keras.layers.Layer):
 
 
 class DANNClassifier(Model):
-    def __init__(self):
+    def __init__(self, db: pd.DataFrame, n_layers: int, weight_decay: float, dense_size: list,
+                 activation_function: list, learning_rate: float, drop_rate: list,
+                 batch_size: int,  n_epochs: int, optimizer: str = 'adam') -> None:
+        self.wd = weight_decay
+        self.lr = learning_rate
+        self.dr = drop_rate
+        self.af = activation_function
+        self.opt = optimizer
+        self._num_layers = n_layers
+        self._num_nodes = dense_size
+        self._batch_size = batch_size
+        self.n_epochs = n_epochs
+        db = self.preprocess_data(db)
+        self.data = db
+        # Network architecture
+        self.feature_layers = self._create_model()
+        # Label predictor
+        self.label_predictor_layers = self._create_label_predictor()
+        # Domain predictor
+        self.domain_predictor_layer = self._create_domain_predictor()
+        self.model
         super().__init__()
 
-        # Feature Extractor
-        self.feature_extractor_layer0 = Conv2D(32, kernel_size=(3, 3), activation='relu')
-        self.feature_extractor_layer1 = BatchNormalization()
-        self.feature_extractor_layer2 = MaxPool2D(pool_size=(2, 2), strides=(2, 2))
+    def call(self, features, train=False, source_train=True, lamda=1.0):
+        # Feature extractor
+        for layer in self.feature_layers:
+            features = layer(features)
 
-        self.feature_extractor_layer3 = Conv2D(64, kernel_size=(5, 5), activation='relu')
-        self.feature_extractor_layer4 = Dropout(0.5)
-        self.feature_extractor_layer5 = BatchNormalization()
-        self.feature_extractor_layer6 = MaxPool2D(pool_size=(2, 2), strides=(2, 2))
+        # Label predictor
+        label = self.label_predictor_layers[0](features)
+        label = self.label_predictor_layers[1](label)
 
-        # Label Predictor
-        self.label_predictor_layer0 = Dense(100, activation='relu')
-        self.label_predictor_layer1 = Dense(100, activation='relu')
-        self.label_predictor_layer2 = Dense(10, activation=None)
+        # Domain predictor
+        domain = self.domain_predictor_layer[0](features, lamda)  # GradientReversalLayer
+        domain = self.domain_predictor_layer[1](domain)
 
-        # Domain Predictor
-        self.domain_predictor_layer0 = GradientReversalLayer()
-        self.domain_predictor_layer1 = Dense(100, activation='relu')
-        self.domain_predictor_layer2 = Dense(2, activation=None)
+        return label, domain
 
-    def call(self, x, train=False, source_train=True, lamda=1.0):
-        # Feature Extractor
-        x = self.feature_extractor_layer0(x)
-        x = self.feature_extractor_layer1(x, training=train)
-        x = self.feature_extractor_layer2(x)
+    def _create_model(self) -> list:
+        feature_extractor = []
+        for i in range(self._num_layers):
+            feature_extractor.append(BatchNormalization())
+            feature_extractor.append(Dense(self._num_nodes[i], activation=self.af[i],
+                                     kernel_regularizer=l2(self.wd), bias_regularizer=l2(self.wd)))
+            feature_extractor.append(Dropout(self.dr[i]))
+        return feature_extractor
 
-        x = self.feature_extractor_layer3(x)
-        x = self.feature_extractor_layer4(x, training=train)
-        x = self.feature_extractor_layer5(x, training=train)
-        x = self.feature_extractor_layer6(x)
+    def train_and_test(self) -> pd.DataFrame:
+        # Split for train and test
+        x_train, y_train, x_val, y_val, x_test, y_test = self.split_train_val_test(self.data)
 
-        feature = tf.reshape(x, [-1, 4 * 4 * 64])
+        # Get optimizer
+        opt = Adam(learning_rate=self.lr, decay=self.lr/self.n_epochs)
+        if self.opt == 'sgd':
+            opt = SGD(learning_rate=self.lr, decay=self.lr/self.n_epochs)
+        if self.opt == 'rmsprop':
+            opt = RMSprop(learning_rate=self.lr, decay=self.lr/self.n_epochs)
 
-        # Label Predictor
-        if source_train is True:
-            feature_slice = feature
-        else:
-            feature_slice = tf.slice(feature, [0, 0], [feature.shape[0] // 2, -1])
+        # Compile model
+        loss = {}
+        self.model.compile(loss=self.get_loss(None, None, None, None), optimizer=opt, metrics="accuracy")
+        # fit model
+        history = self.model.fit(x_train, y_train, epochs=self.n_epochs, batch_size=self._batch_size,
+                                 validation_data=(x_val, y_val), verbose=0)
+        # plot history
+        self.plot_history(history)
 
-        lp_x = self.label_predictor_layer0(feature_slice)
-        lp_x = self.label_predictor_layer1(lp_x)
-        l_logits = self.label_predictor_layer2(lp_x)
+        # test the model
+        loss, acc = self.test(x_test, y_test)
 
-        # Domain Predictor
-        if source_train is True:
-            return l_logits
-        else:
-            dp_x = self.domain_predictor_layer0(feature, lamda)  # GradientReversalLayer
-            dp_x = self.domain_predictor_layer1(dp_x)
-            d_logits = self.domain_predictor_layer2(dp_x)
+        # print summary
+        # print('--------------------------------------------------------------')
+        # print("DNN Summary: ")
+        # self.model.summary()
+        return acc
 
-            return l_logits, d_logits
+    def get_loss(self, label_pred, labels_true, domain_pred=None, domain_true=None):
+        return self._loss_func(label_pred, labels_true) + self._loss_func(domain_pred, domain_true)
 
+    @staticmethod
+    def _loss_func(input_logits, target_labels):
+        return tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(logits=input_logits, labels=target_labels))
 
-model = DANN()
+    @staticmethod
+    def _create_label_predictor() -> list:
+        label_predictor = [Dense(units=6, activation='relu'),
+                           Dense(units=n_classes, activation='softmax')]
+        return label_predictor
 
+    @staticmethod
+    def _create_domain_predictor() -> list:
+        domain_predictor = [Dense(units=6, activation='relu'),
+                            Dense(units=n_domains, activation='softmax')]
+        return domain_predictor
 
-def loss_func(input_logits, target_labels):
-    return tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(logits=input_logits, labels=target_labels))
+    @staticmethod
+    def preprocess_data(df):
+        db = df.dropna(axis=1, how='all')
+        db = db.dropna(axis=0)
+        irrelevant_columns = ['layer', 'structure_area_abbrev', 'sampling_rate', 'mean_clipped', 'file_name']
+        db = db.drop([x for x in irrelevant_columns if x in df.columns], axis=1)
+        db['dendrite_type'] = pd.Categorical(db['dendrite_type'])
+        db['dendrite_type'] = db['dendrite_type'].cat.codes
+        db['organism'] = pd.Categorical(db['organism'])
+        db['organism'] = db['organism'].cat.codes
+        return db
 
+    @staticmethod
+    def split_train_val_test(data: pd.DataFrame) -> tuple:
+        scaler = StandardScaler()
 
-def get_loss(l_logits, labels, d_logits=None, domain=None):
-    if d_logits is None:
-        return loss_func(l_logits, labels)
-    else:
-        return loss_func(l_logits, labels) + loss_func(d_logits, domain)
+        y_label = data.pop('dendrite_type')
+        y_label = y_label.values.astype(np.float32)
+        y_label = to_categorical(y_label, num_classes=n_classes)
 
+        y_domain = data.pop('organism')
+        y_domain = y_domain.values.astype(np.float32)
+        y_domain = to_categorical(y_domain, num_classes=n_domains)
 
-model_optimizer = tf.optimizers.SGD()
+        y = [[y_label[i], y_domain[i]] for i in range(len(y_label))]
 
-domain_labels = np.vstack([np.tile([1., 0.], [BATCH_SIZE, 1]),
-                           np.tile([0., 1.], [BATCH_SIZE, 1])])
-domain_labels = domain_labels.astype('float32')
+        x = data.values.astype(np.float32)
+        x = scaler.fit_transform(x)
 
-epoch_accuracy = tf.keras.metrics.CategoricalAccuracy()
-source_acc = []  # Source Domain Accuracy while Source-only Training
-da_acc = []  # Source Domain Accuracy while DA-training
-test_acc = []  # Testing Dataset (Target Domain) Accuracy
-test2_acc = []  # Target Domain (used for Training) Accuracy
+        x_train, x_val, y_train, y_val = train_test_split(x, y, train_size=0.85, random_state=42)
+        x_train, x_test, y_train, y_test = train_test_split(x_train, y_train, train_size=0.7, random_state=42)
+        return x_train, y_train, x_val, y_val, x_test, y_test
 
-
-@tf.function
-def train_step_source(s_images, s_labels, lamda=1.0):
-    images = s_images
-    labels = s_labels
-
-    with tf.GradientTape() as tape:
-        output = model(images, train=True, source_train=True, lamda=lamda)
-
-        model_loss = get_loss(output, labels)
-        epoch_accuracy(output, labels)
-
-    gradients_mdan = tape.gradient(model_loss, model.trainable_variables)
-    model_optimizer.apply_gradients(zip(gradients_mdan, model.trainable_variables))
-
-
-@tf.function
-def train_step_da(s_images, s_labels, t_images=None, t_labels=None, lamda=1.0):
-    images = tf.concat([s_images, t_images], 0)
-    labels = s_labels
-
-    with tf.GradientTape() as tape:
-        output = model(images, train=True, source_train=False, lamda=lamda)
-
-        model_loss = get_loss(output[0], labels, output[1], domain_labels)
-        epoch_accuracy(output[0], labels)
-
-    gradients_mdan = tape.gradient(model_loss, model.trainable_variables)
-    model_optimizer.apply_gradients(zip(gradients_mdan, model.trainable_variables))
-
-
-@tf.function
-def test_step(t_images, t_labels):
-    images = t_images
-    labels = t_labels
-
-    output = model(images, train=False, source_train=True)
-    epoch_accuracy(output, labels)
+    @staticmethod
+    def plot_history(history) -> None:
+        plt.figure()
+        plt.plot(history.history['accuracy'], label='train_accuracy')
+        plt.plot(history.history['val_accuracy'], label='val_accuracy')
+        plt.xlabel('Epoch')
+        plt.ylabel('Accuracy')
+        plt.ylim([0.5, 1])
+        plt.legend(loc='lower right')
+        plt.draw()
 
 
-def train(train_mode, epochs=EPOCH):
-    if train_mode == 'source':
-        dataset = source_dataset
-        train_func = train_step_source
-        acc_list = source_acc
-    elif train_mode == 'domain-adaptation':
-        dataset = da_dataset
-        train_func = train_step_da
-        acc_list = da_acc
-    else:
-        raise ValueError("Unknown training Mode")
-
-    for epoch in range(epochs):
-        p = float(epoch) / epochs
-        lamda = 2 / (1 + np.exp(-100 * p, dtype=np.float32)) - 1
-        lamda = lamda.astype('float32')
-
-        for batch in dataset:
-            train_func(*batch, lamda=lamda)
-
-        print("Training: Epoch {} :\t Source Accuracy : {:.3%}".format(epoch, epoch_accuracy.result()), end='  |  ')
-        acc_list.append(epoch_accuracy.result())
-        test()
-        epoch_accuracy.reset_states()
+def get_data() -> pd.DataFrame:
+    # get directories and data
+    dir_path = os.path.dirname(os.path.realpath(__file__))
+    dataframe_path_mouse = dir_path + '/data/dataframe/mouse'
+    dataframe_path_human = dir_path + '/data/dataframe/human'
+    dataframe_name = 'extracted_mean_ephys_data.csv'
+    data_mouse = pd.read_csv(dataframe_path_mouse + '/' + dataframe_name)
+    data_mouse['organism'] = 0
+    data_human = pd.read_csv(dataframe_path_human + '/' + dataframe_name)
+    data_human['organism'] = 1
+    data = data_mouse.append(data_human, ignore_index=True)
+    return data
 
 
-def test():
-    epoch_accuracy.reset_states()
+def main():
+    data = get_data()
+    DANN = DANNClassifier(db=data, n_layers=4, weight_decay=0.01, dense_size=[27, 64, 128, 32],
+                          activation_function=['swish', 'swish', 'swish', 'swish'], learning_rate=0.00005,
+                          drop_rate=[0, 0.1, 0.2, 0.3], batch_size=16, n_epochs=1000, optimizer='adam')
+    DANN.train_and_test()
 
-    # Testing Dataset (Target Domain)
-    for batch in test_dataset:
-        test_step(*batch)
-
-    print("Testing Accuracy : {:.3%}".format(epoch_accuracy.result()), end='  |  ')
-    test_acc.append(epoch_accuracy.result())
-    epoch_accuracy.reset_states()
-
-    # Target Domain (used for Training)
-    for batch in test_dataset2:
-        test_step(*batch)
-
-    print("Target Domain Accuracy : {:.3%}".format(epoch_accuracy.result()))
-    test2_acc.append(epoch_accuracy.result())
-    epoch_accuracy.reset_states()
+    # show matplotlib graphs
+    plt.show()
 
 
-# Training
-# train('source', 5)
-
-train('domain-adaptation', EPOCH)
-
-# Plot Results
-x_axis = [i for i in range(0, EPOCH)]
-
-plt.plot(x_axis, da_acc, label="source accuracy")
-plt.plot(x_axis, test_acc, label="testing accuracy")
-plt.plot(x_axis, test2_acc, label="target accuracy")
-plt.legend()
+if __name__ == '__main__':
+    main()
