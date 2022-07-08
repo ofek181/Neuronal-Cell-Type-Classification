@@ -1,7 +1,8 @@
 import tensorflow as tf
 import numpy as np
 import pandas as pd
-from keras import Sequential, Model
+from keras import Model, Input
+from keras.layers import Layer
 from keras.layers import Dense, Flatten, BatchNormalization, Dropout
 from keras.regularizers import l2
 from keras.optimizers import Adam, SGD, RMSprop
@@ -17,73 +18,72 @@ n_domains = 2
 
 
 # Gradient Reversal Layer
-@tf.custom_gradient
-def gradient_reverse(x, lamda=1.0):
-    y = tf.identity(x)
+class GradientReversal(Layer):
+    def __init__(self, lamda: float = 1.0, **kwargs):
+        super(GradientReversal, self).__init__(**kwargs)
+        self.lamda = lamda
 
-    def grad(dy):
-        return lamda * -dy, None
+    @staticmethod
+    @tf.custom_gradient
+    def reverse_gradient(x, lamda):
+        return tf.identity(x), lambda dy: (-dy, None)
 
-    return y, grad
+    def call(self, x):
+        return self.reverse_gradient(x, self.lamda)
 
+    def compute_mask(self, inputs, mask=None):
+        return mask
 
-class GradientReversalLayer(tf.keras.layers.Layer):
-    def __init__(self):
-        super().__init__()
+    def compute_output_shape(self, input_shape):
+        return input_shape
 
-    def call(self, x, lamda=1.0):
-        return gradient_reverse(x, lamda)
+    def get_config(self):
+        return super(GradientReversal, self).get_config() | {'λ': self.lamda}
 
 
 class DANNClassifier(Model):
     def __init__(self, db: pd.DataFrame, n_layers: int, weight_decay: float, dense_size: list,
                  activation_function: list, learning_rate: float, drop_rate: list,
-                 batch_size: int,  n_epochs: int, optimizer: str = 'adam') -> None:
-        super().__init__()
+                 batch_size: int,  n_epochs: int, optimizer: str = 'adam', lamda: float = 1.0) -> None:
+        super(DANNClassifier, self).__init__()
         self.wd = weight_decay
         self.lr = learning_rate
         self.dr = drop_rate
         self.af = activation_function
         self.opt = optimizer
+        self.lamda = lamda
         self._num_layers = n_layers
         self._num_nodes = dense_size
         self._batch_size = batch_size
         self.n_epochs = n_epochs
         db = self.preprocess_data(db)
         self.data = db
-        # Network architecture
-        self.feature_layers = self._create_model()
-        # Label predictor
-        self.label_predictor_layers = self._create_label_predictor()
-        # Domain predictor
-        self.domain_predictor_layer = self._create_domain_predictor()
-        self.model = None
+        self.model = self._create_model()
 
-    def call(self, model_input, train=False, source_train=True, lamda=1.0):
-        features = self.feature_layers[0](input)
+    def _create_model(self):
         # Feature extractor
-        for layer in self.feature_layers[1:]:
-            features = layer(features)
+        inputs = Input(shape=(len(self.data),), name='input')
+        x = BatchNormalization()(inputs)
+        x = Dense(self._num_nodes[0], activation=self.af[0],
+                  kernel_regularizer=l2(self.wd), bias_regularizer=l2(self.wd))(x)
+        x = Dropout(self.dr[0])(x)
+        for i in range(1, self._num_layers):
+            x = BatchNormalization()(x)
+            x = Dense(self._num_nodes[i], activation=self.af[i],
+                      kernel_regularizer=l2(self.wd), bias_regularizer=l2(self.wd))(x)
+            x = Dropout(self.dr[i])(x)
 
         # Label predictor
-        label = self.label_predictor_layers[0](features)
-        label = self.label_predictor_layers[1](label)
+        label = Dense(n_classes, activation='softmax')(x)
 
         # Domain predictor
-        domain = self.domain_predictor_layer[0](features, lamda)  # GradientReversalLayer
-        domain = self.domain_predictor_layer[1](domain)
+        grad = GradientReversal(self.lamda)(x)
+        domain = Dense(n_domains, activation='softmax')(grad)
 
-        self.model = Model(inputs=model_input, outputs=[label, domain])
-        return label, domain
+        # Define model using Keras' functional API
+        model = Model(inputs=inputs, outputs=[label, domain])
 
-    def _create_model(self) -> list:
-        feature_extractor = []
-        for i in range(self._num_layers):
-            feature_extractor.append(BatchNormalization())
-            feature_extractor.append(Dense(self._num_nodes[i], activation=self.af[i],
-                                     kernel_regularizer=l2(self.wd), bias_regularizer=l2(self.wd)))
-            feature_extractor.append(Dropout(self.dr[i]))
-        return feature_extractor
+        return model
 
     def train_and_test(self) -> pd.DataFrame:
         # Split for train and test
