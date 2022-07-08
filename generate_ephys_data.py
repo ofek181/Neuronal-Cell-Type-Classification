@@ -101,9 +101,9 @@ class Downloader:
         df = df[df['dendrite_type'].isin(['spiny', 'aspiny'])]
         df['file_name'] = df.index
         if self.human:
-            df.to_csv(os.path.join(dataframe_path_human, 'extracted_mean_ephys_data.csv'))
+            df.to_csv(os.path.join(dataframe_path_human, 'extracted_mean_ephys_data.csv'), index=False)
         else:
-            df.to_csv(os.path.join(dataframe_path_mouse, 'extracted_mean_ephys_data.csv'))
+            df.to_csv(os.path.join(dataframe_path_mouse, 'extracted_mean_ephys_data.csv'), index=False)
 
     @staticmethod
     def get_ephys_features(sweep_data: dict) -> dict:
@@ -134,7 +134,7 @@ class Downloader:
         :return: saves a ephys feature dataframe with the allensdk
         """
         data = self.ctc.get_ephys_features(dataframe=True)
-        data.to_csv(os.path.join(dataframe_path, 'ephys_features.csv'))
+        data.to_csv(os.path.join(dataframe_path, 'ephys_features.csv'), index=False)
 
     def generate_data(self):
         """
@@ -181,6 +181,6 @@ class Downloader:
 
 
 if __name__ == '__main__':
-    downloader = Downloader(human=True)
+    downloader = Downloader(human=False)
     downloader.generate_data()
     downloader.create_ephys_dataframe()
