@@ -1,6 +1,6 @@
-import tensorflow as tf
 import numpy as np
 import pandas as pd
+import tensorflow as tf
 from keras import Model, Input
 from keras.layers import Layer
 from keras.layers import Dense, Flatten, BatchNormalization, Dropout
@@ -56,13 +56,13 @@ class DANNClassifier(Model):
         self._num_nodes = dense_size
         self._batch_size = batch_size
         self.n_epochs = n_epochs
-        db = self.preprocess_data(db)
-        self.data = db
+        self.data = self.preprocess_data(db)
         self.model = self._create_model()
 
     def _create_model(self):
         # Feature extractor
-        inputs = Input(shape=(len(self.data),), name='input')
+        n_label_columns = 2
+        inputs = Input(shape=(self.data.shape[1]-n_label_columns,), name='input')
         x = BatchNormalization()(inputs)
         x = Dense(self._num_nodes[0], activation=self.af[0],
                   kernel_regularizer=l2(self.wd), bias_regularizer=l2(self.wd))(x)
@@ -74,11 +74,11 @@ class DANNClassifier(Model):
             x = Dropout(self.dr[i])(x)
 
         # Label predictor
-        label = Dense(n_classes, activation='softmax')(x)
+        label = Dense(n_classes, activation='softmax', name='l_pred')(x)
 
         # Domain predictor
         grad = GradientReversal(self.lamda)(x)
-        domain = Dense(n_domains, activation='softmax')(grad)
+        domain = Dense(n_domains, activation='softmax', name='d_pred')(grad)
 
         # Define model using Keras' functional API
         model = Model(inputs=inputs, outputs=[label, domain])
@@ -87,7 +87,9 @@ class DANNClassifier(Model):
 
     def train_and_test(self) -> pd.DataFrame:
         # Split for train and test
-        x_train, y_train, x_val, y_val, x_test, y_test = self.split_train_val_test(self.data)
+        # x_train, y_train_domain, y_train_label, x_val, y_val_domain,\
+        # y_val_label, x_test, y_test_domain, y_test_label = self.split_train_val_test(self.data)
+        x_train, y_train, x_val, y_val, x_test, y_test = self.split_train_val_test()
 
         # Get optimizer
         opt = Adam(learning_rate=self.lr, decay=self.lr/self.n_epochs)
@@ -100,8 +102,9 @@ class DANNClassifier(Model):
         self.model.compile(loss=['categorical_crossentropy',
                                  'categorical_crossentropy'], optimizer=opt, metrics="accuracy")
         # fit model
-        history = self.model.fit(x_train, y_train, epochs=self.n_epochs, batch_size=self._batch_size,
-                                 validation_data=(x_val, y_val), verbose=0)
+        history = self.model.fit(x_train, {'l_pred': y_train[:, 0, :], 'd_pred': y_train[:, 1, :]},
+                                 validation_data=(x_val, {'l_pred': y_val[:, 0, :], 'd_pred': y_val[:, 1, :]}),
+                                 epochs=self.n_epochs, batch_size=self._batch_size, verbose=1)
         # plot history
         self.plot_history(history)
 
@@ -145,21 +148,22 @@ class DANNClassifier(Model):
         db['organism'] = db['organism'].cat.codes
         return db
 
-    @staticmethod
-    def split_train_val_test(data: pd.DataFrame) -> tuple:
+    def split_train_val_test(self) -> tuple:
         scaler = StandardScaler()
 
-        y_label = data.pop('dendrite_type')
+        y_label = self.data.pop('dendrite_type')
         y_label = y_label.values.astype(np.float32)
         y_label = to_categorical(y_label, num_classes=n_classes)
 
-        y_domain = data.pop('organism')
+        y_domain = self.data.pop('organism')
         y_domain = y_domain.values.astype(np.float32)
         y_domain = to_categorical(y_domain, num_classes=n_domains)
 
-        y = [[y_label[i], y_domain[i]] for i in range(len(y_label))]
+        y = np.zeros((len(y_label), n_classes, n_domains))
+        y[:, 0, :] = y_label
+        y[:, 1, :] = y_domain
 
-        x = data.values.astype(np.float32)
+        x = self.data.values.astype(np.float32)
         x = scaler.fit_transform(x)
 
         x_train, x_val, y_train, y_val = train_test_split(x, y, train_size=0.85, random_state=42)
@@ -196,7 +200,7 @@ def main():
     data = get_data()
     DANN = DANNClassifier(db=data, n_layers=4, weight_decay=0.01, dense_size=[27, 64, 128, 32],
                           activation_function=['swish', 'swish', 'swish', 'swish'], learning_rate=0.00005,
-                          drop_rate=[0, 0.1, 0.2, 0.3], batch_size=16, n_epochs=1000, optimizer='adam')
+                          drop_rate=[0, 0.1, 0.2, 0.3], batch_size=16, n_epochs=100, optimizer='adam')
     DANN.train_and_test()
 
     # show matplotlib graphs
