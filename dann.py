@@ -39,6 +39,7 @@ class DANNClassifier(Model):
     def __init__(self, db: pd.DataFrame, n_layers: int, weight_decay: float, dense_size: list,
                  activation_function: list, learning_rate: float, drop_rate: list,
                  batch_size: int,  n_epochs: int, optimizer: str = 'adam') -> None:
+        super().__init__()
         self.wd = weight_decay
         self.lr = learning_rate
         self.dr = drop_rate
@@ -56,12 +57,12 @@ class DANNClassifier(Model):
         self.label_predictor_layers = self._create_label_predictor()
         # Domain predictor
         self.domain_predictor_layer = self._create_domain_predictor()
-        self.model
-        super().__init__()
+        self.model = None
 
-    def call(self, features, train=False, source_train=True, lamda=1.0):
+    def call(self, model_input, train=False, source_train=True, lamda=1.0):
+        features = self.feature_layers[0](input)
         # Feature extractor
-        for layer in self.feature_layers:
+        for layer in self.feature_layers[1:]:
             features = layer(features)
 
         # Label predictor
@@ -72,6 +73,7 @@ class DANNClassifier(Model):
         domain = self.domain_predictor_layer[0](features, lamda)  # GradientReversalLayer
         domain = self.domain_predictor_layer[1](domain)
 
+        self.model = Model(inputs=model_input, outputs=[label, domain])
         return label, domain
 
     def _create_model(self) -> list:
@@ -95,8 +97,8 @@ class DANNClassifier(Model):
             opt = RMSprop(learning_rate=self.lr, decay=self.lr/self.n_epochs)
 
         # Compile model
-        loss = {}
-        self.model.compile(loss=self.get_loss(None, None, None, None), optimizer=opt, metrics="accuracy")
+        self.model.compile(loss=['categorical_crossentropy',
+                                 'categorical_crossentropy'], optimizer=opt, metrics="accuracy")
         # fit model
         history = self.model.fit(x_train, y_train, epochs=self.n_epochs, batch_size=self._batch_size,
                                  validation_data=(x_val, y_val), verbose=0)
