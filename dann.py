@@ -128,7 +128,7 @@ class DANNClassifier(Model):
     def test(self, x_test, y_test) -> tuple:
         # calculate test loss and accuracy
         cce = tf.keras.losses.CategoricalCrossentropy()
-        predictions = self.model.predict(x_test)
+        predictions = self.model.predict(x_test, verbose=0)
         l_pred = predictions[0]
         d_pred = predictions[1]
         l_true = np.argmax(y_test[:, 0, :], axis=1)
@@ -155,7 +155,7 @@ class DANNClassifier(Model):
     def test_label_predictions(self, x_test, y_test) -> tuple:
         # calculate test loss and accuracy
         cce = tf.keras.losses.CategoricalCrossentropy()
-        l_pred = self.model.predict(x_test)[0]
+        l_pred = self.model.predict(x_test, verbose=0)[0]
         l_true = np.argmax(y_test, axis=1)
         loss = cce(y_test, l_pred).numpy()
         l_pred = np.argmax(l_pred, axis=1)
@@ -284,6 +284,18 @@ def main(args):
     data_mouse_test = DANN.preprocess_data(data_mouse_test)
     data_mouse_test = data_mouse_test.drop('organism', axis=1)
 
+    y_label_human = data_human_test.pop('dendrite_type')
+    y_label_human = y_label_human.values.astype(np.float32)
+    y_label_human = to_categorical(y_label_human, num_classes=n_classes)
+    x_human = data_human_test.values.astype(np.float32)
+    x_human = scaler.fit_transform(x_human)
+
+    y_label_mouse = data_mouse_test.pop('dendrite_type')
+    y_label_mouse = y_label_mouse.values.astype(np.float32)
+    y_label_mouse = to_categorical(y_label_mouse, num_classes=n_classes)
+    x_mouse = data_mouse_test.values.astype(np.float32)
+    x_mouse = scaler.fit_transform(x_mouse)
+
     for layer in layers:
         for ds in dense_sizes:
             for af in afs:
@@ -294,13 +306,13 @@ def main(args):
                                 for lr in lrs:
                                     for batch in batches:
                                         for lamda in lambdas:
-                                            print("=============================================================")
+                                            print("----------------------------------------------------------------")
                                             print("Num layers: {0}, Network architecture: {1}".format(layer, ds))
                                             print("Activations: {0}, Drop rates: {1}".format(af, drop))
                                             print("Optimizer: {0}, N_epochs: {1}".format(optimizer, epoch))
                                             print("Weight decay: {0}, Learning rate: {1}".format(wd, lr))
                                             print("Batch size: {0}, Lambda: {1}".format(batch, lamda))
-                                            print("=============================================================")
+
                                             DANN = DANNClassifier(db=data,
                                                                   n_layers=layer,
                                                                   weight_decay=wd,
@@ -315,22 +327,12 @@ def main(args):
                                             DANN.train_and_test()
 
                                             # Test network on test human data
-                                            y_label = data_human_test.pop('dendrite_type')
-                                            y_label = y_label.values.astype(np.float32)
-                                            y_label = to_categorical(y_label, num_classes=n_classes)
-                                            x = data_human_test.values.astype(np.float32)
-                                            x = scaler.fit_transform(x)
                                             print('Human Test:')
-                                            human_loss, human_acc = DANN.test_label_predictions(x, y_label)
+                                            human_loss, human_acc = DANN.test_label_predictions(x_human, y_label_human)
 
                                             # Test network on test mouse data
-                                            y_label = data_mouse_test.pop('dendrite_type')
-                                            y_label = y_label.values.astype(np.float32)
-                                            y_label = to_categorical(y_label, num_classes=n_classes)
-                                            x = data_mouse_test.values.astype(np.float32)
-                                            x = scaler.fit_transform(x)
                                             print('Mouse Test:')
-                                            mouse_loss, mouse_acc = DANN.test_label_predictions(x, y_label)
+                                            mouse_loss, mouse_acc = DANN.test_label_predictions(x_mouse, y_label_mouse)
 
                                             if human_acc > 0.93 and mouse_acc > 0.93:
                                                 print("hyper parameters found!")
