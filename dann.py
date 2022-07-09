@@ -6,8 +6,8 @@ from keras import Model, Input
 from keras.layers import Layer
 from keras.layers import Dense, BatchNormalization, Dropout
 from keras.regularizers import l2
-from keras.optimizers import Adam, SGD, RMSprop
-from keras.utils import to_categorical
+from tensorflow.keras.optimizers import Adam, SGD, RMSprop
+from tensorflow.keras.utils import to_categorical
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import StandardScaler
 from sklearn.metrics import confusion_matrix, accuracy_score
@@ -18,14 +18,8 @@ dir_path = os.path.dirname(os.path.realpath(__file__))
 
 n_classes = 2
 n_domains = 2
-
-os.environ['CUDA_VISIBLE_DEVICES'] = '-1'
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
-if tf.test.gpu_device_name():
-    print('GPU found')
-    print("Num GPUs Available: ", len(tf.config.list_physical_devices('GPU')))
-else:
-    print("No GPU found")
+print("Num GPUs Available: ", len(tf.config.list_physical_devices('GPU')))
 
 # TODO plot confusion matrix
 # TODO make the code pretty and add docstring
@@ -242,7 +236,7 @@ def get_data() -> tuple:
     data_mouse, data_mouse_test = train_test_split(data_mouse, test_size=0.2)
     data_human = pd.read_csv(dataframe_path_human + '/' + dataframe_name)
     data_human['organism'] = 1
-    data_human, data_human_test = train_test_split(data_human, test_size=0.1)
+    data_human, data_human_test = train_test_split(data_human, test_size=0.2)
     data = data_mouse.append(data_human, ignore_index=True)
     return data, data_human_test, data_mouse_test
 
@@ -268,7 +262,7 @@ def main(args):
     batches = [16, 32, 64]
     epochs = [100, 250, 500, 1000, 2000]
     optimizers = ['adam', 'sgd', 'rmsprop']
-    lambdas = [0.3, 0.35, 0.4, 0.45, 0.48, 0.5, 0.52, 0.55, 0.6, 0.65, 0.7, 0.75, 0.8,
+    lambdas = [0.3, 0.32, 0.33, 0.35, 0.37, 0.4, 0.45, 0.48, 0.5, 0.52, 0.55, 0.6, 0.65, 0.7, 0.75, 0.8,
                1, 1.1, 1.2, 1.3, 1.5, 2, 2.5, 3, 3.5, 4, 4.5, 5]
 
     DANN = DANNClassifier(db=data,
@@ -347,7 +341,7 @@ def main(args):
                                             n_run += 1
                                             results.to_csv(os.path.join(results_path, 'DANN_results.csv'), index=True)
 
-                                            if human_acc > 0.94 and mouse_acc > 0.94:
+                                            if human_acc > 0.95 and mouse_acc > 0.95:
                                                 print("hyper parameters found!")
                                                 print("Results are:")
                                                 print("=============================================================")

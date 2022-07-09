@@ -17,7 +17,6 @@ from helper_functions import calculate_metrics
 
 n_classes = 2
 
-os.environ['CUDA_VISIBLE_DEVICES'] = '-1'
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 if tf.test.gpu_device_name():
     print('GPU found')

@@ -16,7 +16,6 @@ from consts import GAF_IMAGE_SIZE
 dir_path = os.path.dirname(os.path.realpath(__file__))
 npy_path = dir_path + '\\data\\images\\npy'
 
-os.environ['CUDA_VISIBLE_DEVICES'] = '-1'
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 if tf.test.gpu_device_name():
     print('GPU found')
