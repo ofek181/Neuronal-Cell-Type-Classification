@@ -4,15 +4,17 @@ import pandas as pd
 import tensorflow as tf
 from keras import Model, Input
 from keras.layers import Layer
-from keras.layers import Dense, Flatten, BatchNormalization, Dropout
+from keras.layers import Dense, BatchNormalization, Dropout
 from keras.regularizers import l2
 from keras.optimizers import Adam, SGD, RMSprop
 from keras.utils import to_categorical
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import StandardScaler
 from sklearn.metrics import confusion_matrix, accuracy_score
-import os
 import matplotlib.pyplot as plt
+import os
+
+dir_path = os.path.dirname(os.path.realpath(__file__))
 
 n_classes = 2
 n_domains = 2
@@ -93,7 +95,7 @@ class DANNClassifier(Model):
 
         return model
 
-    def train_and_test(self) -> pd.DataFrame:
+    def train_and_test(self) -> tuple:
         # Split for train and test
         # x_train, y_train_domain, y_train_label, x_val, y_val_domain,\
         # y_val_label, x_test, y_test_domain, y_test_label = self.split_train_val_test(self.data)
@@ -123,7 +125,7 @@ class DANNClassifier(Model):
         # print('--------------------------------------------------------------')
         # print("DNN Summary: ")
         # self.model.summary()
-        return acc
+        return loss, acc
 
     def test(self, x_test, y_test) -> tuple:
         # calculate test loss and accuracy
@@ -232,8 +234,7 @@ class DANNClassifier(Model):
 
 
 def get_data() -> tuple:
-    # get directories and data
-    dir_path = os.path.dirname(os.path.realpath(__file__))
+    # get data from directories
     dataframe_path_mouse = dir_path + '/data/dataframe/mouse'
     dataframe_path_human = dir_path + '/data/dataframe/human'
     dataframe_name = 'extracted_mean_ephys_data.csv'
@@ -249,7 +250,11 @@ def get_data() -> tuple:
 
 def main(args):
     data, data_human_test, data_mouse_test = get_data()
-
+    results_path = dir_path + '/results/DANN'
+    column_names = ["N Layers", "Dense Size", "Activation Function", "Drop Rate", "Optimizer",
+               "N Epochs", "Weight Decay", "Learning Rate", "Batch Size", "Lambda",
+               "Total Accuracy", "Human Accuracy", "Mouse Accuracy"]
+    results = pd.DataFrame(columns=column_names)
     # Hyperparameter grid search
     layers = [6, 5, 4, 3, 2, 1]
     wds = [0.1, 0.01, 0.001, 0.0001, 0.00001]
@@ -264,7 +269,7 @@ def main(args):
     batches = [16, 32, 64]
     epochs = [100, 250, 500, 1000, 2000]
     optimizers = ['adam', 'sgd', 'rmsprop']
-    lambdas = [0.5, 1, 1.5, 2, 2.5, 3, 3.5, 4, 4.5, 5, 6, 7, 8, 9, 10]
+    lambdas = [0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 1, 1.1, 1.2, 1.3, 1.5, 2, 2.5, 3, 3.5, 4, 4.5, 5]
 
     DANN = DANNClassifier(db=data,
                           n_layers=1,
@@ -296,6 +301,8 @@ def main(args):
     x_mouse = data_mouse_test.values.astype(np.float32)
     x_mouse = scaler.fit_transform(x_mouse)
 
+    n_run = 0
+
     for layer in layers:
         for ds in dense_sizes:
             for af in afs:
@@ -324,7 +331,7 @@ def main(args):
                                                                   n_epochs=epoch,
                                                                   optimizer=optimizer,
                                                                   dp_lambda=lamda)
-                                            DANN.train_and_test()
+                                            loss, acc = DANN.train_and_test()
 
                                             # Test network on test human data
                                             print('Human Test:')
@@ -333,6 +340,12 @@ def main(args):
                                             # Test network on test mouse data
                                             print('Mouse Test:')
                                             mouse_loss, mouse_acc = DANN.test_label_predictions(x_mouse, y_label_mouse)
+
+                                            results.loc[n_run] = [layer, ds, af, drop, optimizer,
+                                                                  epoch, wd, lr, batch, lamda,
+                                                                  acc, human_acc, mouse_acc]
+                                            n_run += 1
+                                            results.to_csv(os.path.join(results_path, 'DANN_results.csv'), index=True)
 
                                             if human_acc > 0.93 and mouse_acc > 0.93:
                                                 print("hyper parameters found!")
