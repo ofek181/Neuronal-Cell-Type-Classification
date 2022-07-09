@@ -1,3 +1,4 @@
+import argparse
 import numpy as np
 import pandas as pd
 import tensorflow as tf
@@ -16,6 +17,19 @@ import matplotlib.pyplot as plt
 n_classes = 2
 n_domains = 2
 
+os.environ['CUDA_VISIBLE_DEVICES'] = '-1'
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
+if tf.test.gpu_device_name():
+    print('GPU found')
+    print("Num GPUs Available: ", len(tf.config.list_physical_devices('GPU')))
+else:
+    print("No GPU found")
+
+# TODO test trained network on human data alone vs mouse data alone
+# TODO plot confusion matrix
+# TODO make the code pretty and add docstring
+# TODO find hyper-parameters that work well for the domain adaptation task
+
 
 # Gradient Reversal Layer
 class GradientReversal(Layer):
@@ -24,11 +38,12 @@ class GradientReversal(Layer):
         y = tf.identity(x)
 
         def custom_grad(dy):
-            return tf.negative(dy)
+            return tf.negative(dy) * self.lamda
         return y, custom_grad
 
-    def __init__(self, **kwargs):
+    def __init__(self, lamda: float, **kwargs):
         super(GradientReversal, self).__init__(**kwargs)
+        self.lamda = lamda
 
     def call(self, inputs, *args, **kwargs):
         return self.grad_reverse(inputs)
@@ -37,18 +52,18 @@ class GradientReversal(Layer):
 class DANNClassifier(Model):
     def __init__(self, db: pd.DataFrame, n_layers: int, weight_decay: float, dense_size: list,
                  activation_function: list, learning_rate: float, drop_rate: list,
-                 batch_size: int,  n_epochs: int, optimizer: str = 'adam', lamda: float = 1.0) -> None:
+                 batch_size: int,  n_epochs: int, optimizer: str = 'adam', dp_lambda: float = 1.0) -> None:
         super(DANNClassifier, self).__init__()
         self.wd = weight_decay
         self.lr = learning_rate
         self.dr = drop_rate
         self.af = activation_function
         self.opt = optimizer
-        self.lamda = lamda
         self._num_layers = n_layers
         self._num_nodes = dense_size
         self._batch_size = batch_size
         self.n_epochs = n_epochs
+        self.dp_lambda = dp_lambda
         self.data = self.preprocess_data(db)
         self.model = self._create_model()
 
@@ -70,7 +85,7 @@ class DANNClassifier(Model):
         label = Dense(n_classes, activation='softmax', name='l_pred')(x)
 
         # Domain predictor
-        flipped_grad = GradientReversal()(x)
+        flipped_grad = GradientReversal(self.dp_lambda)(x)
         domain = Dense(n_domains, activation='softmax', name='d_pred')(flipped_grad)
 
         # Define model using Keras' functional API
@@ -97,7 +112,7 @@ class DANNClassifier(Model):
         # fit model
         history = self.model.fit(x_train, {'l_pred': y_train[:, 0, :], 'd_pred': y_train[:, 1, :]},
                                  validation_data=(x_val, {'l_pred': y_val[:, 0, :], 'd_pred': y_val[:, 1, :]}),
-                                 epochs=self.n_epochs, batch_size=self._batch_size, verbose=1)
+                                 epochs=self.n_epochs, batch_size=self._batch_size, verbose=0)
         # plot history
         self.plot_history(history)
 
@@ -123,9 +138,30 @@ class DANNClassifier(Model):
         d_pred = np.argmax(d_pred, axis=1)
         l_acc = accuracy_score(l_true, l_pred)
         d_acc = accuracy_score(d_true, d_pred)
-        print('====================================================')
+        # print('====================================================')
         print("Label Accuracy: " + str(l_acc))
-        print("Domain Accuracy: " + str(d_acc))
+        # print("Domain Accuracy: " + str(d_acc))
+        # # plot confusion matrix
+        # y_pred = self.model.predict(x_test)
+        # matrix = confusion_matrix(y_test.argmax(axis=1), y_pred.argmax(axis=1))
+        # plt.figure()
+        # label_names = ['aspiny', 'spiny']
+        # s = sns.heatmap(matrix / np.sum(matrix), annot=True, fmt='.2%',
+        #             cmap='Blues', xticklabels=label_names, yticklabels=label_names)
+        # s.set(xlabel='Predicted label', ylabel='True label')
+        # plt.draw()
+        return loss, l_acc
+
+    def test_label_predictions(self, x_test, y_test) -> tuple:
+        # calculate test loss and accuracy
+        cce = tf.keras.losses.CategoricalCrossentropy()
+        l_pred = self.model.predict(x_test)[0]
+        l_true = np.argmax(y_test, axis=1)
+        loss = cce(y_test, l_pred).numpy()
+        l_pred = np.argmax(l_pred, axis=1)
+        l_acc = accuracy_score(l_true, l_pred)
+        # print('====================================================')
+        print("Accuracy: " + str(l_acc))
         # # plot confusion matrix
         # y_pred = self.model.predict(x_test)
         # matrix = confusion_matrix(y_test.argmax(axis=1), y_pred.argmax(axis=1))
@@ -188,8 +224,6 @@ class DANNClassifier(Model):
         plt.figure()
         plt.plot(history.history['l_pred_accuracy'], label='label train accuracy')
         plt.plot(history.history['val_l_pred_accuracy'], label='label val accuracy')
-        plt.plot(history.history['d_pred_accuracy'], label='domain train accuracy')
-        plt.plot(history.history['val_d_pred_accuracy'], label='domain val accuracy')
         plt.xlabel('Epoch')
         plt.ylabel('Accuracy')
         plt.ylim([0.5, 1])
@@ -197,7 +231,7 @@ class DANNClassifier(Model):
         plt.draw()
 
 
-def get_data() -> pd.DataFrame:
+def get_data() -> tuple:
     # get directories and data
     dir_path = os.path.dirname(os.path.realpath(__file__))
     dataframe_path_mouse = dir_path + '/data/dataframe/mouse'
@@ -205,22 +239,117 @@ def get_data() -> pd.DataFrame:
     dataframe_name = 'extracted_mean_ephys_data.csv'
     data_mouse = pd.read_csv(dataframe_path_mouse + '/' + dataframe_name)
     data_mouse['organism'] = 0
+    data_mouse, data_mouse_test = train_test_split(data_mouse, test_size=0.2)
     data_human = pd.read_csv(dataframe_path_human + '/' + dataframe_name)
     data_human['organism'] = 1
+    data_human, data_human_test = train_test_split(data_human, test_size=0.1)
     data = data_mouse.append(data_human, ignore_index=True)
-    return data
+    return data, data_human_test, data_mouse_test
 
 
-def main():
-    data = get_data()
-    DANN = DANNClassifier(db=data, n_layers=4, weight_decay=0.1, dense_size=[27, 64, 128, 32],
-                          activation_function=['swish', 'swish', 'swish', 'swish'], learning_rate=0.001,
-                          drop_rate=[0, 0.2, 0.2, 0.2], batch_size=16, n_epochs=100, optimizer='adam')
-    DANN.train_and_test()
+def main(args):
+    data, data_human_test, data_mouse_test = get_data()
 
-    # show matplotlib graphs
-    plt.show()
+    # Hyperparameter grid search
+    layers = [6, 5, 4, 3, 2, 1]
+    wds = [0.1, 0.01, 0.001, 0.0001, 0.00001]
+    dense_sizes = [[27, 128, 64, 32, 16, 8], [64, 256, 128, 64, 32, 32], [27, 32, 64, 128, 64, 32],
+                   [256, 512, 1024, 128, 64, 32], [27, 32, 32, 16, 16, 8], [27, 20, 16, 10, 8, 4]]
+    afs = [['swish', 'swish', 'swish', 'swish', 'swish', 'swish'], ['relu', 'relu', 'relu', 'relu', 'relu', 'relu'],
+           ['swish', 'swish', 'swish', 'relu', 'relu', 'relu'], ['relu', 'relu', 'relu', 'swish', 'swish', 'swish']]
+    lrs = [0.01, 0.001, 0.0001, 0.00001, 0.000001, 0.0000001]
+    drops = [[0.4, 0.4, 0.4, 0.4, 0.4, 0.4], [0.2, 0.2, 0.2, 0.2, 0.2, 0.2],
+             [0.1, 0.1, 0.1, 0.2, 0.2, 0.2], [0.5, 0.4, 0.3, 0.3, 0.2, 0.1],
+             [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]]
+    batches = [16, 32, 64]
+    epochs = [100, 250, 500, 1000, 2000]
+    optimizers = ['adam', 'sgd', 'rmsprop']
+    lambdas = [0.5, 1, 1.5, 2, 2.5, 3, 3.5, 4, 4.5, 5, 6, 7, 8, 9, 10]
+
+    DANN = DANNClassifier(db=data,
+                          n_layers=1,
+                          weight_decay=0.1,
+                          dense_size=[100],
+                          activation_function=['relu'],
+                          learning_rate=0.1,
+                          drop_rate=[0.1],
+                          batch_size=8,
+                          n_epochs=1,
+                          optimizer='adam',
+                          dp_lambda=1)
+    # Preprocess data
+    scaler = StandardScaler()
+    data_human_test = DANN.preprocess_data(data_human_test)
+    data_human_test = data_human_test.drop('organism', axis=1)
+    data_mouse_test = DANN.preprocess_data(data_mouse_test)
+    data_mouse_test = data_mouse_test.drop('organism', axis=1)
+
+    for layer in layers:
+        for ds in dense_sizes:
+            for af in afs:
+                for drop in drops:
+                    for optimizer in optimizers:
+                        for epoch in epochs:
+                            for wd in wds:
+                                for lr in lrs:
+                                    for batch in batches:
+                                        for lamda in lambdas:
+                                            print("=============================================================")
+                                            print("Num layers: {0}, Network architecture: {1}".format(layer, ds))
+                                            print("Activations: {0}, Drop rates: {1}".format(af, drop))
+                                            print("Optimizer: {0}, N_epochs: {1}".format(optimizer, epoch))
+                                            print("Weight decay: {0}, Learning rate: {1}".format(wd, lr))
+                                            print("Batch size: {0}, Lambda: {1}".format(batch, lamda))
+                                            print("=============================================================")
+                                            DANN = DANNClassifier(db=data,
+                                                                  n_layers=layer,
+                                                                  weight_decay=wd,
+                                                                  dense_size=ds,
+                                                                  activation_function=af,
+                                                                  learning_rate=lr,
+                                                                  drop_rate=drop,
+                                                                  batch_size=batch,
+                                                                  n_epochs=epoch,
+                                                                  optimizer=optimizer,
+                                                                  dp_lambda=lamda)
+                                            DANN.train_and_test()
+
+                                            # Test network on test human data
+                                            y_label = data_human_test.pop('dendrite_type')
+                                            y_label = y_label.values.astype(np.float32)
+                                            y_label = to_categorical(y_label, num_classes=n_classes)
+                                            x = data_human_test.values.astype(np.float32)
+                                            x = scaler.fit_transform(x)
+                                            print('Human Test:')
+                                            human_loss, human_acc = DANN.test_label_predictions(x, y_label)
+
+                                            # Test network on test mouse data
+                                            y_label = data_mouse_test.pop('dendrite_type')
+                                            y_label = y_label.values.astype(np.float32)
+                                            y_label = to_categorical(y_label, num_classes=n_classes)
+                                            x = data_mouse_test.values.astype(np.float32)
+                                            x = scaler.fit_transform(x)
+                                            print('Mouse Test:')
+                                            mouse_loss, mouse_acc = DANN.test_label_predictions(x, y_label)
+
+                                            if human_acc > 0.93 and mouse_acc > 0.93:
+                                                print("hyper parameters found!")
+                                                print("Results are:")
+                                                print("=============================================================")
+                                                print("Num layers: {0}, Network architecture: {1}".format(layer, ds))
+                                                print("Activations: {0}, Drop rates: {1}".format(af, drop))
+                                                print("Optimizer: {0}, N_epochs: {1}".format(optimizer, epoch))
+                                                print("Weight decay: {0}, Learning rate: {1}".format(wd, lr))
+                                                print("Batch size: {0}, Lambda: {1}".format(batch, lamda))
+                                                print("=============================================================")
+                                                break
 
 
 if __name__ == '__main__':
-    main()
+    parser = argparse.ArgumentParser('')
+    parser.add_argument('--cuda',
+                        help='cuda device index',
+                        type=int,
+                        default=3)
+    args = parser.parse_args()
+    main(args)
