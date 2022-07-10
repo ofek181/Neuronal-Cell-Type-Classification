@@ -124,11 +124,11 @@ class ConvNet:
         return results
 
     @staticmethod
-    def save_results(reslt: pd.DataFrame, path: str, n_run: int,
+    def save_results(results: pd.DataFrame, acc: float, path: str, n_run: int,
                      lr: float, batch_size: int, optimizer: str, drop_rate: float,
                      moment: float, wd: float, dense_size: list, epch: int) -> None:
-        reslt.loc[n_run] = [lr, batch_size, drop_rate, moment, optimizer, wd, dense_size, epch]
-        reslt.to_csv(os.path.join(path, 'CNN_results.csv'), index=True)
+        results.loc[n_run] = [lr, batch_size, drop_rate, moment, optimizer, wd, dense_size, epch]
+        results.to_csv(os.path.join(path, 'CNN_results.csv'), index=True)
 
 
 def main():
@@ -164,10 +164,10 @@ def main():
                                           format(dense, wd, opt, mmnt, drop, batch, lr))
                                     cnn = ConvNet(weight_decay=wd, dense_size=dense, drop_rate=drop,
                                                   data_file=data, labels_file=labels)
-                                    res = cnn.train_and_test(lr=lr, n_epochs=epoch, batch_size=batch,
+                                    acc = cnn.train_and_test(lr=lr, n_epochs=epoch, batch_size=batch,
                                                              optim=opt, moment=mmnt)
-                                    print("Accuracy: {}".format(res))
-                                    ConvNet.save_results(reslt=res, path=results_path, n_run=run,
+                                    print("Accuracy: {}".format(acc))
+                                    ConvNet.save_results(results=results, acc=acc, path=results_path, n_run=run,
                                                          lr=lr, batch_size=batch, optimizer=opt,
                                                          moment=mmnt, wd=wd, dense_size=dense,
                                                          drop_rate=drop, epch=epoch)
