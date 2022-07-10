@@ -127,13 +127,13 @@ class ConvNet:
     def save_results(results: pd.DataFrame, acc: float, path: str, n_run: int,
                      lr: float, batch_size: int, optimizer: str, drop_rate: float,
                      moment: float, wd: float, dense_size: list, epch: int) -> None:
-        results.loc[n_run] = [lr, batch_size, drop_rate, moment, optimizer, wd, dense_size, epch]
+        results.loc[n_run] = [acc, lr, batch_size, drop_rate, moment, optimizer, wd, dense_size, epch]
         results.to_csv(os.path.join(path, 'CNN_results.csv'), index=True)
 
 
 def main():
     results_path = dir_path + '/results/DANN'
-    column_names = ["Learning rate", "Batch Size", "Drop Rate", "Moment",
+    column_names = ["Accuracy", "Learning rate", "Batch Size", "Drop Rate", "Moment",
                     "Optimizer", "Weight Decay", "Dense Size", "N Epochs"]
     results = pd.DataFrame(columns=column_names)
     lrs = [0.001, 0.0005, 0.0001, 0.00001]
