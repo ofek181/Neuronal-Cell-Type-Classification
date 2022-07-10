@@ -1,4 +1,3 @@
-import argparse
 import numpy as np
 import pandas as pd
 import tensorflow as tf
@@ -8,6 +7,7 @@ from keras.layers import Dense, BatchNormalization, Dropout
 from keras.regularizers import l2
 from tensorflow.keras.optimizers import Adam, SGD, RMSprop
 from tensorflow.keras.utils import to_categorical
+from tensorflow.python.client import device_lib
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import StandardScaler
 from sklearn.metrics import confusion_matrix, accuracy_score
@@ -18,8 +18,12 @@ dir_path = os.path.dirname(os.path.realpath(__file__))
 
 n_classes = 2
 n_domains = 2
-os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
+
 print("Num GPUs Available: ", len(tf.config.list_physical_devices('GPU')))
+gpus = tf.config.list_physical_devices('GPU')
+for gpu in gpus:
+    print("Name:", gpu.name, "  Type:", gpu.device_type)
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 
 # TODO plot confusion matrix
 # TODO make the code pretty and add docstring
@@ -109,7 +113,7 @@ class DANNClassifier(Model):
                                  validation_data=(x_val, {'l_pred': y_val[:, 0, :], 'd_pred': y_val[:, 1, :]}),
                                  epochs=self.n_epochs, batch_size=self._batch_size, verbose=0)
         # plot history
-        self.plot_history(history)
+        # self.plot_history(history)
 
         # test the model
         loss, acc = self.test(x_test, y_test)
@@ -241,7 +245,7 @@ def get_data() -> tuple:
     return data, data_human_test, data_mouse_test
 
 
-def main(args):
+def main():
     data, data_human_test, data_mouse_test = get_data()
     results_path = dir_path + '/results/DANN'
     column_names = ["N Layers", "Dense Size", "Activation Function", "Drop Rate", "Optimizer",
@@ -250,20 +254,19 @@ def main(args):
     results = pd.DataFrame(columns=column_names)
     # Hyperparameter grid search
     layers = [6, 5, 4, 3, 2, 1]
-    wds = [0.1, 0.01, 0.001, 0.0001, 0.00001]
+    wds = [0.01, 0.001, 0.1, 0.0001, 0.00001]
     dense_sizes = [[27, 128, 64, 32, 16, 8], [64, 256, 128, 64, 32, 32], [27, 32, 64, 128, 64, 32],
                    [256, 512, 1024, 128, 64, 32], [27, 32, 32, 16, 16, 8], [27, 20, 16, 10, 8, 4]]
     afs = [['swish', 'swish', 'swish', 'swish', 'swish', 'swish'], ['relu', 'relu', 'relu', 'relu', 'relu', 'relu'],
-           ['swish', 'swish', 'swish', 'relu', 'relu', 'relu'], ['relu', 'relu', 'relu', 'swish', 'swish', 'swish']]
-    lrs = [0.01, 0.001, 0.0001, 0.00001, 0.000001, 0.0000001]
+           ['swish', 'swish', 'swish', 'relu', 'relu', 'relu']]
+    lrs = [0.01, 0.001, 0.0001, 0.00001, 0.000001]
     drops = [[0.4, 0.4, 0.4, 0.4, 0.4, 0.4], [0.2, 0.2, 0.2, 0.2, 0.2, 0.2],
-             [0.1, 0.1, 0.1, 0.2, 0.2, 0.2], [0.5, 0.4, 0.3, 0.3, 0.2, 0.1],
-             [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]]
-    batches = [16, 32, 64]
-    epochs = [100, 250, 500, 1000, 2000]
+             [0.1, 0.1, 0.1, 0.2, 0.2, 0.2], [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]]
+    batches = [32, 64]
+    epochs = [1024, 512, 2048]
     optimizers = ['adam', 'sgd', 'rmsprop']
     lambdas = [0.3, 0.32, 0.33, 0.35, 0.37, 0.4, 0.45, 0.48, 0.5, 0.52, 0.55, 0.6, 0.65, 0.7, 0.75, 0.8,
-               1, 1.1, 1.2, 1.3, 1.5, 2, 2.5, 3, 3.5, 4, 4.5, 5]
+               1, 1.1, 1.2, 1.3, 1.5, 2, 2.5, 3, 3.5, 4, 4.5, 5, 6, 7, 8, 9, 10]
 
     DANN = DANNClassifier(db=data,
                           n_layers=1,
@@ -307,6 +310,8 @@ def main(args):
                                 for lr in lrs:
                                     for batch in batches:
                                         for lamda in lambdas:
+                                            print("----------------------------------------------------------------")
+                                            print("Run number: " + str(n_run))
                                             print("----------------------------------------------------------------")
                                             print("Num layers: {0}, Network architecture: {1}".format(layer, ds))
                                             print("Activations: {0}, Drop rates: {1}".format(af, drop))
@@ -355,10 +360,9 @@ def main(args):
 
 
 if __name__ == '__main__':
-    parser = argparse.ArgumentParser('')
-    parser.add_argument('--cuda',
-                        help='cuda device index',
-                        type=int,
-                        default=3)
-    args = parser.parse_args()
-    main(args)
+    id = input("Enter device: ")
+    try:
+        with tf.device('/device:GPU:' + str(id)):
+            main()
+    except RuntimeError as e:
+        print(e)
