@@ -101,7 +101,7 @@ class ConvNet:
         # fit model
 
         history = self.model.fit(self.x_train, self.y_train,
-                                 epochs=n_epochs, callbacks=callbacks,
+                                 epochs=n_epochs, callbacks=callbacks, verbose=0,
                                  batch_size=batch_size, validation_data=(self.x_val, self.y_val))
 
         # evaluate model
