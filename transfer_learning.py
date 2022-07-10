@@ -105,7 +105,7 @@ class ConvNet:
                                  batch_size=batch_size, validation_data=(self.x_val, self.y_val))
 
         # evaluate model
-        loss, acc = self.model.evaluate(self.x_test, self.y_test, verbose=2)
+        loss, acc = self.model.evaluate(self.x_test, self.y_test, verbose=0)
         print(acc)
 
         # # plot history
