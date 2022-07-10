@@ -48,6 +48,9 @@ class GradientReversal(Layer):
         return self.grad_reverse(inputs)
 
 
+callbacks = [tf.keras.callbacks.EarlyStopping(patience=10, restore_best_weights=True)]
+
+
 class DANNClassifier(Model):
     def __init__(self, db: pd.DataFrame, n_layers: int, weight_decay: float, dense_size: list,
                  activation_function: list, learning_rate: float, drop_rate: list,
@@ -111,7 +114,7 @@ class DANNClassifier(Model):
         # fit model
         history = self.model.fit(x_train, {'l_pred': y_train[:, 0, :], 'd_pred': y_train[:, 1, :]},
                                  validation_data=(x_val, {'l_pred': y_val[:, 0, :], 'd_pred': y_val[:, 1, :]}),
-                                 epochs=self.n_epochs, batch_size=self._batch_size, verbose=0)
+                                 epochs=self.n_epochs, batch_size=self._batch_size, callbacks=callbacks, verbose=0)
         # plot history
         # self.plot_history(history)
 
