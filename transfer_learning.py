@@ -3,24 +3,24 @@ import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 import tensorflow as tf
-from keras.applications import VGG16
-from keras.layers import Dense, Flatten, Conv2D, Dropout, GlobalAveragePooling2D, LayerNormalization
-from keras.utils import to_categorical
-from keras.optimizers import Adam, SGD, RMSprop
-from keras.callbacks import Callback
+from tensorflow.keras.applications import VGG16
+from tensorflow.keras.layers import Dense, Dropout, GlobalAveragePooling2D, LayerNormalization
+from tensorflow.keras.utils import to_categorical
+from tensorflow.keras.optimizers import Adam, SGD, RMSprop
+from tensorflow.python.client import device_lib
 from sklearn.model_selection import train_test_split
 from keras.models import Sequential
 from keras.regularizers import l2
 from helper_functions import calculate_metrics
 from consts import GAF_IMAGE_SIZE
 dir_path = os.path.dirname(os.path.realpath(__file__))
-npy_path = dir_path + '\\data\\images\\npy'
+npy_path = dir_path + '/data/images/npy/mouse'
 
+print("Num GPUs Available: ", len(tf.config.list_physical_devices('GPU')))
+gpus = tf.config.list_physical_devices('GPU')
+for gpu in gpus:
+    print("Name:", gpu.name, "  Type:", gpu.device_type)
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
-if tf.test.gpu_device_name():
-    print('GPU found')
-else:
-    print("No GPU found")
 
 # TODO there might be something wrong with the data
 
@@ -123,27 +123,30 @@ class ConvNet:
         results = acc
         return results
 
-    def save_results(self, results: pd.DataFrame, path: str, name: str) -> None:
-        """
-        :param results: results on the testing data.
-        :param path: path to save file.
-        :param name: name of the file.
-        :return: None.
-        """
-        self.model.save(path)
-        results.to_csv(os.path.join(path, name))
+    @staticmethod
+    def save_results(reslt: pd.DataFrame, path: str, n_run: int,
+                     lr: float, batch_size: int, optimizer: str, drop_rate: float,
+                     moment: float, wd: float, dense_size: list, epch: int) -> None:
+        reslt.loc[n_run] = [lr, batch_size, drop_rate, moment, optimizer, wd, dense_size, epch]
+        reslt.to_csv(os.path.join(path, 'CNN_results.csv'), index=True)
 
 
-if __name__ == '__main__':
+def main():
+    results_path = dir_path + '/results/DANN'
+    column_names = ["Learning rate", "Batch Size", "Drop Rate", "Moment",
+                    "Optimizer", "Weight Decay", "Dense Size", "N Epochs"]
+    results = pd.DataFrame(columns=column_names)
     lrs = [0.001, 0.0005, 0.0001, 0.00001]
-    batches = [64, 32]
+    batches = [8]
     opts = ['adam', 'rmsprop', 'sgd']
     mmnts = [0.2, 0.5, 0.8]
-    wds = [1, 0.5, 0.1, 0.01]
+    wds = [1.0, 0.5, 0.1, 0.01, 0.001]
     denses = [[1000, 100], [1000, 500], [500, 100], [64, 32]]
     drops = [0.5, 0.3, 0.1]
-    data = npy_path + '\\images.npy'
-    labels = npy_path + '\\labels.npy'
+    n_epochs = [256, 512, 1024]
+    data = npy_path + '/images.npy'
+    labels = npy_path + '/labels.npy'
+    run = 0
     for lr in lrs:
         for batch in batches:
             for drop in drops:
@@ -151,13 +154,30 @@ if __name__ == '__main__':
                     for opt in opts:
                         for wd in wds:
                             for dense in denses:
-                                print("Dense Size: {}, Weight Decay: {}, Optimizer: {}, Moment: {}, Drop Rate: {}, Batch Size: {}, Learning Rate: {}".format(dense, wd, opt, mmnt, drop, batch, lr))
-                                cnn = ConvNet(weight_decay=wd, dense_size=dense, drop_rate=drop, data_file=data, labels_file=labels)
-                                res = cnn.train_and_test(lr=lr, n_epochs=15, batch_size=batch, optim=opt, moment=mmnt)
-                                print("Accuracy: {}".format(res))
-    #
-    # cnn = ConvNet(weight_decay=0.1, dense_size=[1024, 256], drop_rate=0.5, data_file=data, labels_file=labels)
-    # res = cnn.train_and_test(lr=0.00001, n_epochs=100, batch_size=64, optim='rmsprop', moment=0.3)
-    # print("Accuracy: {}".format(res))
+                                for epoch in n_epochs:
+                                    print("----------------------------------------------------------------")
+                                    print("Run number: " + str(run))
+                                    print("----------------------------------------------------------------")
+                                    run += 1
+                                    print("Dense Size: {}, Weight Decay: {}, Optimizer: {},"
+                                          " Moment: {}, Drop Rate: {}, Batch Size: {}, Learning Rate: {}".
+                                          format(dense, wd, opt, mmnt, drop, batch, lr))
+                                    cnn = ConvNet(weight_decay=wd, dense_size=dense, drop_rate=drop,
+                                                  data_file=data, labels_file=labels)
+                                    res = cnn.train_and_test(lr=lr, n_epochs=epoch, batch_size=batch,
+                                                             optim=opt, moment=mmnt)
+                                    print("Accuracy: {}".format(res))
+                                    ConvNet.save_results(reslt=res, path=results_path, n_run=run,
+                                                         lr=lr, batch_size=batch, optimizer=opt,
+                                                         moment=mmnt, wd=wd, dense_size=dense,
+                                                         drop_rate=drop, epch=epoch)
 
+
+if __name__ == '__main__':
+    id = input("Enter device: ")
+    try:
+        with tf.device('/device:GPU:' + str(id)):
+            main()
+    except RuntimeError as e:
+        print(e)
 
