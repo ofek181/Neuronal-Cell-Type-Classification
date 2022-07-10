@@ -23,6 +23,7 @@ for gpu in gpus:
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 
 # TODO there might be something wrong with the data
+# TODO make the code pretty
 
 # class CustomCallback(Callback):
 #     def __init__(self, model, x_test, y_test):
@@ -83,7 +84,7 @@ class ConvNet:
 
         return model
 
-    def train_and_test(self, lr: float, n_epochs: int, batch_size: int, optim: str = 'adam', moment: float = 0) -> pd.DataFrame:
+    def train_and_test(self, lr: float, n_epochs: int, batch_size: int, optim: str = 'adam', moment: float = 0) -> float:
         """
         :return: results of the logistic regression classifier on the testing data.
         """
@@ -120,8 +121,7 @@ class ConvNet:
         # stats.append([accuracy, f1, precision, recall, roc_auc])
         # results = pd.DataFrame(stats, columns=['Accuracy', 'F1 Score', 'Precision', 'Recall', 'ROC AUC'])
 
-        results = acc
-        return results
+        return acc
 
     @staticmethod
     def save_results(results: pd.DataFrame, acc: float, path: str, n_run: int,
