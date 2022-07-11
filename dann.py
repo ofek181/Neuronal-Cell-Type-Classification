@@ -14,16 +14,14 @@ from sklearn.metrics import confusion_matrix, accuracy_score
 import matplotlib.pyplot as plt
 import os
 
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
+
+# TODO add support for cpu
+
 dir_path = os.path.dirname(os.path.realpath(__file__))
 
 n_classes = 2
 n_domains = 2
-
-print("Num GPUs Available: ", len(tf.config.list_physical_devices('GPU')))
-gpus = tf.config.list_physical_devices('GPU')
-for gpu in gpus:
-    print("Name:", gpu.name, "  Type:", gpu.device_type)
-os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 
 # TODO plot confusion matrix
 # TODO make the code pretty and add docstring
@@ -257,17 +255,17 @@ def main():
     results = pd.DataFrame(columns=column_names)
     # Hyperparameter grid search
     layers = [6, 5, 4, 3, 2, 1]
-    wds = [0.01, 0.001, 0.1, 0.0001, 0.00001]
+    wds = [0.01, 0.001, 0.1, 0.0001]
     dense_sizes = [[27, 128, 64, 32, 16, 8], [64, 256, 128, 64, 32, 32], [27, 32, 64, 128, 64, 32],
                    [256, 512, 1024, 128, 64, 32], [27, 32, 32, 16, 16, 8], [27, 20, 16, 10, 8, 4]]
     afs = [['swish', 'swish', 'swish', 'swish', 'swish', 'swish'], ['relu', 'relu', 'relu', 'relu', 'relu', 'relu'],
            ['swish', 'swish', 'swish', 'relu', 'relu', 'relu']]
-    lrs = [0.01, 0.001, 0.0001, 0.00001, 0.000001]
+    lrs = [0.01, 0.001, 0.0001, 0.00001]
     drops = [[0.4, 0.4, 0.4, 0.4, 0.4, 0.4], [0.2, 0.2, 0.2, 0.2, 0.2, 0.2],
              [0.1, 0.1, 0.1, 0.2, 0.2, 0.2], [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]]
-    batches = [32, 64]
-    epochs = [512, 1024]
-    optimizers = ['adam', 'sgd', 'rmsprop']
+    batches = [64]
+    epochs = [1024]
+    optimizers = ['adam', 'sgd']
     lambdas = [0.3, 0.32, 0.33, 0.35, 0.37, 0.4, 0.45, 0.48, 0.5, 0.52, 0.55, 0.6, 0.65, 0.7, 0.75, 0.8,
                1, 1.1, 1.2, 1.3, 1.5, 2, 2.5, 3, 3.5, 4, 4.5, 5, 6, 7, 8, 9, 10]
 
@@ -349,7 +347,7 @@ def main():
                                             n_run += 1
                                             results.to_csv(os.path.join(results_path, 'DANN_results.csv'), index=True)
 
-                                            if human_acc > 0.95 and mouse_acc > 0.95:
+                                            if human_acc > 0.94 and mouse_acc > 0.92:
                                                 print("hyper parameters found!")
                                                 print("Results are:")
                                                 print("=============================================================")
@@ -363,9 +361,19 @@ def main():
 
 
 if __name__ == '__main__':
-    id = input("Enter device: ")
+    print("Num GPUs Available: ", len(tf.config.list_physical_devices('GPU')))
+    gpus = tf.config.list_physical_devices('GPU')
+    for gpu in gpus:
+        print("Name:", gpu.name, "  Type:", gpu.device_type)
+    print("Num CPUs Available: ", len(tf.config.list_physical_devices('CPU')))
+
+    cpus = tf.config.list_physical_devices('CPU')
+    for cpu in cpus:
+        print("Name:", cpu.name, "  Type:", cpu.device_type)
+
+    device = input("Enter device (such as /device:GPU:0 or /device:CPU:0): ")
     try:
-        with tf.device('/device:GPU:' + str(id)):
+        with tf.device(device):
             main()
-    except RuntimeError as e:
-        print(e)
+    except ValueError:
+        print("Unavailable device, please enter /device/GPU:id or /device/CPU:id")
