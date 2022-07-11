@@ -132,7 +132,7 @@ class ConvNet:
 
 
 def main():
-    results_path = dir_path + '/results/DANN'
+    results_path = dir_path + '/results/CNN'
     column_names = ["Accuracy", "Learning rate", "Batch Size", "Drop Rate", "Moment",
                     "Optimizer", "Weight Decay", "Dense Size", "N Epochs"]
     results = pd.DataFrame(columns=column_names)
