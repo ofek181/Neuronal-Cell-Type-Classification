@@ -11,6 +11,7 @@ from tensorflow.keras.utils import to_categorical
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import StandardScaler
 from sklearn.metrics import confusion_matrix, accuracy_score
+from helper_functions import calculate_metrics
 import matplotlib.pyplot as plt
 import seaborn as sns
 import os
@@ -21,6 +22,7 @@ n_classes = 2
 n_domains = 2
 
 # TODO cancel randomness with set seed
+# TODO add calculate metrics
 # TODO find hyper-parameters that work well for the domain adaptation task
 
 
@@ -134,7 +136,7 @@ class DANNClassifier(Model, ABC):
         # Fit model
         history = self.model.fit(x_train, {'l_pred': y_train[:, 0, :], 'd_pred': y_train[:, 1, :]},
                                  validation_data=(x_val, {'l_pred': y_val[:, 0, :], 'd_pred': y_val[:, 1, :]}),
-                                 epochs=self.n_epochs, batch_size=self._batch_size, callbacks=callbacks, verbose=1)
+                                 epochs=self.n_epochs, batch_size=self._batch_size, callbacks=callbacks, verbose=0)
         # Plot history
         self.plot_history(history)
 

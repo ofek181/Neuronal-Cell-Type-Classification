@@ -3,7 +3,7 @@ import pandas as pd
 import numpy as np
 import tensorflow as tf
 from keras.models import Sequential
-from keras.layers import Dense, Dropout, Flatten, BatchNormalization
+from keras.layers import Dense, Dropout, BatchNormalization
 from keras.optimizers import Adam, SGD, RMSprop
 from keras.utils import to_categorical
 from keras.regularizers import l2
@@ -15,21 +15,31 @@ from sklearn.metrics import confusion_matrix
 from classifier import Model
 from helper_functions import calculate_metrics
 
+
+dir_path = os.path.dirname(os.path.realpath(__file__))
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 n_classes = 2
 
-os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
-if tf.test.gpu_device_name():
-    print('GPU found')
-else:
-    print("No GPU found")
 
+callbacks = [tf.keras.callbacks.EarlyStopping(patience=10, restore_best_weights=True)]
 
-# TODO add calculate_metrics
 
 class DNNClassifier(Model):
     def __init__(self, db: pd.DataFrame, n_layers: int, weight_decay: float, dense_size: list,
                  activation_function: list, learning_rate: float, drop_rate: list,
                  batch_size: int,  n_epochs: int, optimizer: str = 'adam') -> None:
+        """
+        :param db: dataframe for training and testing.
+        :param n_layers: number of layer in the model.
+        :param weight_decay: l2 regularization values.
+        :param dense_size: size of the dense layers.
+        :param activation_function: activation function in each dense layer.
+        :param learning_rate: learning rate during training.
+        :param drop_rate: dropout rate.
+        :param batch_size: batch size during training and testing.
+        :param n_epochs: number of epochs during training.
+        :param optimizer: optimizer used (adam, sgd or rmsprop).
+        """
         self.wd = weight_decay
         self.lr = learning_rate
         self.dr = drop_rate
@@ -40,6 +50,9 @@ class DNNClassifier(Model):
                                             batch_size=batch_size, n_epochs=n_epochs)
 
     def _create_model(self) -> Sequential:
+        """
+        :return: a sequential keras model.
+        """
         model = Sequential()
         for i in range(self._num_layers):
             model.add(BatchNormalization())
@@ -49,68 +62,66 @@ class DNNClassifier(Model):
         model.add(Dense(n_classes, activation='softmax'))
         return model
 
-    def train_and_test(self) -> pd.DataFrame:
+    def train_and_test(self) -> tuple:
+        """
+        :return: trains and tests a neural network.
+        """
+        # Split into train, val and test
         x_train, y_train, x_val, y_val, x_test, y_test = self.split_train_val_test(self.data)
 
-        opt = Adam(learning_rate=self.lr)
+        # Assign optimizer
+        opt = Adam(learning_rate=self.lr, decay=self.lr/self.n_epochs)
         if self.opt == 'sgd':
-            opt = SGD(learning_rate=self.lr)
+            opt = SGD(learning_rate=self.lr, decay=self.lr/self.n_epochs)
         if self.opt == 'rmsprop':
-            opt = RMSprop(learning_rate=self.lr)
+            opt = RMSprop(learning_rate=self.lr, decay=self.lr/self.n_epochs)
 
-        # compile model
+        # Compile model
         self.model.compile(loss='categorical_crossentropy', optimizer=opt, metrics="accuracy")
-        # fit model
+        # Fit model
         history = self.model.fit(x_train, y_train, epochs=self.n_epochs, batch_size=self._batch_size,
-                                 validation_data=(x_val, y_val), verbose=0)
-        # plot history
+                                 validation_data=(x_val, y_val), verbose=0, callbacks=callbacks)
+        # Plot history
         self.plot_history(history)
 
-        # test the model
-        loss, acc = self.test(x_test, y_test)
-
-        # print summary
-        # print('--------------------------------------------------------------')
-        # print("DNN Summary: ")
-        # self.model.summary()
-        return acc
-
-    def retrain_for_domain_adaptation(self, new_domain_data: pd.DataFrame, lr: float, n_epochs: int, bs: int) -> None:
-        data = self.preprocess_data(new_domain_data)
-        x_train, y_train, x_val, y_val, x_test, y_test = self.split_train_val_test(data)
-
-        # set new learning rate
-        tf.keras.backend.set_value(self.model.optimizer.lr, lr)
-
-        # fit the new model on the new data
-        history = self.model.fit(x_train, y_train, epochs=n_epochs,
-                                 batch_size=bs, validation_data=(x_val, y_val), verbose=0)
-
-        # plot history
-        self.plot_history(history)
-
-        # test the model
-        loss, acc = self.test(x_test, y_test)
-        return acc
+        # Test model
+        accuracy, f1, precision, recall, roc_auc = self.test(x_test, y_test)
+        return accuracy, f1, precision, recall, roc_auc
 
     def test(self, x_test, y_test) -> tuple:
-        # calculate test loss and accuracy
-        loss, acc = self.model.evaluate(x_test, y_test, verbose=0)
+        """
+        :param x_test: testing data.
+        :param y_test: true labels of the testing data.
+        :return: loss and accuracy of the model on the testing data.
+        """
+        # Calculate test loss and accuracy
+        predictions = self.model.predict(x_test, verbose=0)
+        y_pred, y_test = np.argmax(predictions, axis=1), np.argmax(y_test, axis=1)
+        accuracy, f1, precision, recall, roc_auc = calculate_metrics(y_test, y_pred)
+
         print('====================================================')
-        print("Accuracy: " + str(acc))
-        # plot confusion matrix
-        y_pred = self.model.predict(x_test)
-        matrix = confusion_matrix(y_test.argmax(axis=1), y_pred.argmax(axis=1))
+        print("Accuracy: " + str(accuracy))
+        print("F1 Score: " + str(f1))
+        print("Precision: " + str(precision))
+        print("Recall: " + str(recall))
+        print("ROC AUC: " + str(roc_auc))
+
+        # Plot confusion matrix
+        matrix = confusion_matrix(y_test, y_pred)
         plt.figure()
         label_names = ['aspiny', 'spiny']
         s = sns.heatmap(matrix / np.sum(matrix), annot=True, fmt='.2%',
-                    cmap='Blues', xticklabels=label_names, yticklabels=label_names)
+                        cmap='Blues', xticklabels=label_names, yticklabels=label_names)
         s.set(xlabel='Predicted label', ylabel='True label')
         plt.draw()
-        return loss, acc
+        return accuracy, f1, precision, recall, roc_auc
 
     @staticmethod
-    def preprocess_data(df):
+    def preprocess_data(df) -> pd.DataFrame:
+        """
+        :param df: raw dataframe.
+        :return: processed dataframe.
+        """
         db = df.dropna(axis=1, how='all')
         db = db.dropna(axis=0)
         irrelevant_columns = ['layer', 'structure_area_abbrev', 'sampling_rate', 'mean_clipped', 'file_name']
@@ -121,6 +132,10 @@ class DNNClassifier(Model):
 
     @staticmethod
     def split_train_val_test(data: pd.DataFrame) -> tuple:
+        """
+        :param data: processed dataset.
+        :return: data split into train, val and test.
+        """
         scaler = StandardScaler()
         y = data.pop('dendrite_type')
         y = y.values.astype(np.float32)
@@ -133,6 +148,10 @@ class DNNClassifier(Model):
 
     @staticmethod
     def plot_history(history) -> None:
+        """
+        :param history: history of the training process.
+        :return: plots the training process over the number of epochs.
+        """
         plt.figure()
         plt.plot(history.history['accuracy'], label='train_accuracy')
         plt.plot(history.history['val_accuracy'], label='val_accuracy')
@@ -147,62 +166,73 @@ class DNNClassifier(Model):
         pass
 
 
+def train(data: pd.DataFrame) -> DNNClassifier:
+    """
+    :param data: data to be trained on
+    :return: a trained DNNClassifier model
+    """
+    clf = DNNClassifier(db=data, n_layers=4, weight_decay=0.01, dense_size=[27, 64, 128, 32],
+                        activation_function=['swish', 'swish', 'swish', 'swish'], learning_rate=0.00005,
+                        drop_rate=[0, 0.1, 0.2, 0.3], batch_size=16, n_epochs=1024, optimizer='adam')
+    clf.train_and_test()
+    return clf
+
+
 def main():
-    # get directories and data
-    dir_path = os.path.dirname(os.path.realpath(__file__))
-    dataframe_path_mouse = dir_path + '\\data\\dataframe\\mouse'
-    dataframe_path_human = dir_path + '\\data\\dataframe\\human'
+    # get directories
     dataframe_name = 'extracted_mean_ephys_data.csv'
-    data_mouse = pd.read_csv(dataframe_path_mouse + '\\' + dataframe_name)
-    data_human = pd.read_csv(dataframe_path_human + '\\' + dataframe_name)
+    dataframe_path_mouse = dir_path + '/data/dataframe/mouse'
+    dataframe_path_human = dir_path + '/data/dataframe/human'
+    data_mouse = pd.read_csv(dataframe_path_mouse + '/' + dataframe_name)
+    data_human = pd.read_csv(dataframe_path_human + '/' + dataframe_name)
 
     # train on mouse data
     print("=================================================")
     print("Mouse training:")
-    dnnclf = DNNClassifier(db=data_mouse, n_layers=4, weight_decay=0.01, dense_size=[27, 64, 128, 32],
-                           activation_function=['swish', 'swish', 'swish', 'swish'], learning_rate=0.00005,
-                           drop_rate=[0, 0.1, 0.2, 0.3], batch_size=16, n_epochs=1000, optimizer='adam')
-    dnnclf.train_and_test()
-
-    # test human data on pretrained mouse network
+    dnnclf = train(data_mouse)
+    # test human data on trained mouse network
     print("=================================================")
     print("Human test on mouse network:")
-    data_human_test = dnnclf.preprocess_data(data_human)
-    _, _, _, _, x_test_human, y_test_human = dnnclf.split_train_val_test(data_human_test)
-    dnnclf.test(x_test_human, y_test_human)
+    human_test = dnnclf.preprocess_data(data_human)
+    scaler = StandardScaler()
+    y = human_test.pop('dendrite_type')
+    y = y.values.astype(np.float32)
+    y = to_categorical(y, num_classes=n_classes)
+    x = human_test.values.astype(np.float32)
+    x = scaler.fit_transform(x)
+    accuracy_h, f1_h, precision_h, recall_h, roc_auc_h = dnnclf.test(x, y)
 
-    # classify human data with domain adaptation on mouse network
-    print("=================================================")
-    print("Domain adaptation from mouse data to human data:")
-    dnnclf.retrain_for_domain_adaptation(data_human, lr=0.00005, n_epochs=1000, bs=16)
-
-    # test retrained model with mouse data again
-    print("=================================================")
-    print("Test retrained model with mouse data:")
-    data_mouse_test = dnnclf.preprocess_data(data_mouse)
-    _, _, _, _, x_test_mouse, y_test_mouse = dnnclf.split_train_val_test(data_mouse_test)
-    dnnclf.test(x_test_mouse, y_test_mouse)
-
-    # classify human data with its own complete network
+    # train on human data
     print("=================================================")
     print("Human training:")
-    dnnclf = DNNClassifier(db=data_human, n_layers=4, weight_decay=0.01, dense_size=[27, 64, 128, 32],
-                           activation_function=['swish', 'swish', 'swish', 'swish'], learning_rate=0.00005,
-                           drop_rate=[0, 0.1, 0.2, 0.3], batch_size=16, n_epochs=1000, optimizer='adam')
-    dnnclf.train_and_test()
-
-    # test human model with mouse data
+    dnnclf = train(data_human)
+    # test human data on trained mouse network
     print("=================================================")
-    print("Test human model with mouse data:")
-    data_mouse_test = dnnclf.preprocess_data(data_mouse)
-    _, _, _, _, x_test_mouse, y_test_mouse = dnnclf.split_train_val_test(data_mouse_test)
-    dnnclf.test(x_test_mouse, y_test_mouse)
+    print("Mouse test on human network:")
+    mouse_test = dnnclf.preprocess_data(data_mouse)
+    scaler = StandardScaler()
+    y = mouse_test.pop('dendrite_type')
+    y = y.values.astype(np.float32)
+    y = to_categorical(y, num_classes=n_classes)
+    x = mouse_test.values.astype(np.float32)
+    x = scaler.fit_transform(x)
+    accuracy_m, f1_m, precision_m, recall_m, roc_auc_m = dnnclf.test(x, y)
 
     # show matplotlib graphs
     plt.show()
 
 
 if __name__ == '__main__':
-    main()
+    print("Num GPUs Available: ", len(tf.config.list_physical_devices('GPU')))
+    gpus = tf.config.list_physical_devices('GPU')
+    for gpu in gpus:
+        print("Name:", gpu.name, "  Type:", gpu.device_type)
+    print("Num CPUs Available: ", len(tf.config.list_physical_devices('CPU')))
 
-# TODO define different figures for each plot
+    cpus = tf.config.list_physical_devices('CPU')
+    for cpu in cpus:
+        print("Name:", cpu.name, "  Type:", cpu.device_type)
+
+    device = input("Enter device (such as /device:GPU:0 or /device:CPU:0): ")
+    with tf.device(device):
+        main()
