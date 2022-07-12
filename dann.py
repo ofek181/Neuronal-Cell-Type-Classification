@@ -1,3 +1,4 @@
+from abc import ABC
 import numpy as np
 import pandas as pd
 import tensorflow as tf
@@ -7,29 +8,29 @@ from keras.layers import Dense, BatchNormalization, Dropout
 from keras.regularizers import l2
 from tensorflow.keras.optimizers import Adam, SGD, RMSprop
 from tensorflow.keras.utils import to_categorical
-from tensorflow.python.client import device_lib
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import StandardScaler
 from sklearn.metrics import confusion_matrix, accuracy_score
 import matplotlib.pyplot as plt
+import seaborn as sns
 import os
 
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
-
-# TODO add support for cpu
-
 dir_path = os.path.dirname(os.path.realpath(__file__))
-
 n_classes = 2
 n_domains = 2
 
-# TODO plot confusion matrix
-# TODO make the code pretty and add docstring
+# TODO cancel randomness with set seed
 # TODO find hyper-parameters that work well for the domain adaptation task
 
 
 # Gradient Reversal Layer
 class GradientReversal(Layer):
+    """
+        An implementation of the Gradient Reversal Layer,
+        referenced from the "Domain-Adversarial Training of Neural Networks" paper,
+        published in the "Journal of Machine Learning Research" 17 (2016) 1-35.
+    """
     @tf.custom_gradient
     def grad_reverse(self, x):
         y = tf.identity(x)
@@ -49,10 +50,28 @@ class GradientReversal(Layer):
 callbacks = [tf.keras.callbacks.EarlyStopping(patience=10, restore_best_weights=True)]
 
 
-class DANNClassifier(Model):
+class DANNClassifier(Model, ABC):
+    """
+        An implementation of "Domain-Adversarial Training of Neural Networks"
+        for the 'allen cell types' database,
+        dealing with the domain shift between mouse neuronal cells and human neuronal cells.
+    """
     def __init__(self, db: pd.DataFrame, n_layers: int, weight_decay: float, dense_size: list,
                  activation_function: list, learning_rate: float, drop_rate: list,
-                 batch_size: int,  n_epochs: int, optimizer: str = 'adam', dp_lambda: float = 1.0) -> None:
+                 batch_size: int, n_epochs: int, optimizer: str = 'adam', lamda: float = 1.0) -> None:
+        """
+        :param db: database used for training/testing.
+        :param n_layers: number of layer in the model.
+        :param weight_decay: l2 regularization value.
+        :param dense_size: number of neurons in each dense layer.
+        :param activation_function: activation function used in each layer.
+        :param learning_rate: learning rate of the model during training.
+        :param drop_rate: dropout rate during training.
+        :param batch_size: batch size used in model updating.
+        :param n_epochs: number of epochs during training.
+        :param optimizer: optimizer used (ie adam, sgd or rmsprop).
+        :param lamda: lambda value used in the GRL during the training of the domain predictor.
+        """
         super(DANNClassifier, self).__init__()
         self.wd = weight_decay
         self.lr = learning_rate
@@ -63,11 +82,14 @@ class DANNClassifier(Model):
         self._num_nodes = dense_size
         self._batch_size = batch_size
         self.n_epochs = n_epochs
-        self.dp_lambda = dp_lambda
+        self.dp_lambda = lamda
         self.data = self.preprocess_data(db)
         self.model = self._create_model()
 
-    def _create_model(self):
+    def _create_model(self) -> tf.keras.Model:
+        """
+        :return: constructed architecture of the model.
+        """
         # Feature extractor
         n_label_columns = 2
         inputs = Input(shape=(self.data.shape[1]-n_label_columns,), name='input')
@@ -90,16 +112,16 @@ class DANNClassifier(Model):
 
         # Define model using Keras' functional API
         model = Model(inputs=inputs, outputs=[label, domain])
-
         return model
 
     def train_and_test(self) -> tuple:
-        # Split for train and test
-        # x_train, y_train_domain, y_train_label, x_val, y_val_domain,\
-        # y_val_label, x_test, y_test_domain, y_test_label = self.split_train_val_test(self.data)
+        """
+        :return: loss and accuracy on the test set after training.
+        """
+        # Split train and test
         x_train, y_train, x_val, y_val, x_test, y_test = self.split_train_val_test()
 
-        # Get optimizer
+        # Assign optimizer
         opt = Adam(learning_rate=self.lr, decay=self.lr/self.n_epochs)
         if self.opt == 'sgd':
             opt = SGD(learning_rate=self.lr, decay=self.lr/self.n_epochs)
@@ -109,84 +131,69 @@ class DANNClassifier(Model):
         # Compile model
         self.model.compile(loss={'l_pred': 'categorical_crossentropy','d_pred': 'categorical_crossentropy'},
                            optimizer=opt, metrics="accuracy")
-        # fit model
+        # Fit model
         history = self.model.fit(x_train, {'l_pred': y_train[:, 0, :], 'd_pred': y_train[:, 1, :]},
                                  validation_data=(x_val, {'l_pred': y_val[:, 0, :], 'd_pred': y_val[:, 1, :]}),
-                                 epochs=self.n_epochs, batch_size=self._batch_size, callbacks=callbacks, verbose=0)
-        # plot history
-        # self.plot_history(history)
+                                 epochs=self.n_epochs, batch_size=self._batch_size, callbacks=callbacks, verbose=1)
+        # Plot history
+        self.plot_history(history)
 
-        # test the model
+        # Test the model
+        y_test = y_test[:, 0, :]  # get true class labels and lose domain labels during testing
         loss, acc = self.test(x_test, y_test)
-
-        # print summary
-        # print('--------------------------------------------------------------')
-        # print("DNN Summary: ")
-        # self.model.summary()
         return loss, acc
 
     def test(self, x_test, y_test) -> tuple:
+        """
+        :param x_test: testing set
+        :param y_test: true testing set labels
+        :return: loss and accuracy of the testing set.
+        """
         # calculate test loss and accuracy
         cce = tf.keras.losses.CategoricalCrossentropy()
-        predictions = self.model.predict(x_test, verbose=0)
+        predictions = self.model.predict(x_test, verbose=1)
         l_pred = predictions[0]
-        d_pred = predictions[1]
-        l_true = np.argmax(y_test[:, 0, :], axis=1)
-        d_true = np.argmax(y_test[:, 1, :], axis=1)
-        loss = cce(y_test[:, 0, :], l_pred).numpy()
-        l_pred = np.argmax(l_pred, axis=1)
-        d_pred = np.argmax(d_pred, axis=1)
-        l_acc = accuracy_score(l_true, l_pred)
-        d_acc = accuracy_score(d_true, d_pred)
-        # print('====================================================')
-        print("Label Accuracy: " + str(l_acc))
-        # print("Domain Accuracy: " + str(d_acc))
-        # # plot confusion matrix
-        # y_pred = self.model.predict(x_test)
-        # matrix = confusion_matrix(y_test.argmax(axis=1), y_pred.argmax(axis=1))
-        # plt.figure()
-        # label_names = ['aspiny', 'spiny']
-        # s = sns.heatmap(matrix / np.sum(matrix), annot=True, fmt='.2%',
-        #             cmap='Blues', xticklabels=label_names, yticklabels=label_names)
-        # s.set(xlabel='Predicted label', ylabel='True label')
-        # plt.draw()
-        return loss, l_acc
-
-    def test_label_predictions(self, x_test, y_test) -> tuple:
-        # calculate test loss and accuracy
-        cce = tf.keras.losses.CategoricalCrossentropy()
-        l_pred = self.model.predict(x_test, verbose=0)[0]
         l_true = np.argmax(y_test, axis=1)
         loss = cce(y_test, l_pred).numpy()
         l_pred = np.argmax(l_pred, axis=1)
         l_acc = accuracy_score(l_true, l_pred)
-        # print('====================================================')
         print("Accuracy: " + str(l_acc))
-        # # plot confusion matrix
-        # y_pred = self.model.predict(x_test)
-        # matrix = confusion_matrix(y_test.argmax(axis=1), y_pred.argmax(axis=1))
-        # plt.figure()
-        # label_names = ['aspiny', 'spiny']
-        # s = sns.heatmap(matrix / np.sum(matrix), annot=True, fmt='.2%',
-        #             cmap='Blues', xticklabels=label_names, yticklabels=label_names)
-        # s.set(xlabel='Predicted label', ylabel='True label')
-        # plt.draw()
+        # plot confusion matrix
+        plt.figure()
+        matrix = confusion_matrix(l_pred, l_true)
+        label_names = ['aspiny', 'spiny']
+        s = sns.heatmap(matrix / np.sum(matrix), annot=True, fmt='.2%',
+                        cmap='Blues', xticklabels=label_names, yticklabels=label_names)
+        s.set(xlabel='Predicted label', ylabel='True label')
+        plt.draw()
         return loss, l_acc
 
-    @staticmethod
-    def _create_label_predictor() -> list:
-        label_predictor = [Dense(units=6, activation='relu'),
-                           Dense(units=n_classes, activation='softmax')]
-        return label_predictor
+    def split_train_val_test(self) -> tuple:
+        """
+        :return: scale the data and divide into train, validation and test.
+        """
+        scaler = StandardScaler()
+        y_label = self.data.pop('dendrite_type')
+        y_label = y_label.values.astype(np.float32)
+        y_label = to_categorical(y_label, num_classes=n_classes)
+        y_domain = self.data.pop('organism')
+        y_domain = y_domain.values.astype(np.float32)
+        y_domain = to_categorical(y_domain, num_classes=n_domains)
+        y = np.zeros((len(y_label), n_classes, n_domains))
+        y[:, 0, :] = y_label
+        y[:, 1, :] = y_domain
+        x = self.data.values.astype(np.float32)
+        x = scaler.fit_transform(x)
+        x_train, x_val, y_train, y_val = train_test_split(x, y, train_size=0.85, random_state=42)
+        x_train, x_test, y_train, y_test = train_test_split(x_train, y_train, train_size=0.7, random_state=42)
+        return x_train, y_train, x_val, y_val, x_test, y_test
 
     @staticmethod
-    def _create_domain_predictor() -> list:
-        domain_predictor = [Dense(units=6, activation='relu'),
-                            Dense(units=n_domains, activation='softmax')]
-        return domain_predictor
-
-    @staticmethod
-    def preprocess_data(df):
+    def preprocess_data(df) -> pd.DataFrame:
+        """
+        :param df: unprocessed dataset.
+        :return: processed dataset.
+        """
         db = df.dropna(axis=1, how='all')
         db = db.dropna(axis=0)
         irrelevant_columns = ['layer', 'structure_area_abbrev', 'sampling_rate', 'mean_clipped', 'file_name']
@@ -197,30 +204,12 @@ class DANNClassifier(Model):
         db['organism'] = db['organism'].cat.codes
         return db
 
-    def split_train_val_test(self) -> tuple:
-        scaler = StandardScaler()
-
-        y_label = self.data.pop('dendrite_type')
-        y_label = y_label.values.astype(np.float32)
-        y_label = to_categorical(y_label, num_classes=n_classes)
-
-        y_domain = self.data.pop('organism')
-        y_domain = y_domain.values.astype(np.float32)
-        y_domain = to_categorical(y_domain, num_classes=n_domains)
-
-        y = np.zeros((len(y_label), n_classes, n_domains))
-        y[:, 0, :] = y_label
-        y[:, 1, :] = y_domain
-
-        x = self.data.values.astype(np.float32)
-        x = scaler.fit_transform(x)
-
-        x_train, x_val, y_train, y_val = train_test_split(x, y, train_size=0.85, random_state=42)
-        x_train, x_test, y_train, y_test = train_test_split(x_train, y_train, train_size=0.7, random_state=42)
-        return x_train, y_train, x_val, y_val, x_test, y_test
-
     @staticmethod
     def plot_history(history) -> None:
+        """
+        :param history: training history data
+        :return: plots the training process.
+        """
         plt.figure()
         plt.plot(history.history['l_pred_accuracy'], label='label train accuracy')
         plt.plot(history.history['val_l_pred_accuracy'], label='label val accuracy')
@@ -232,6 +221,9 @@ class DANNClassifier(Model):
 
 
 def get_data() -> tuple:
+    """
+    :return: tuple of merged mouse/human data, human testing data and mouse testing data.
+    """
     # get data from directories
     dataframe_path_mouse = dir_path + '/data/dataframe/mouse'
     dataframe_path_human = dir_path + '/data/dataframe/human'
@@ -246,26 +238,28 @@ def get_data() -> tuple:
     return data, data_human_test, data_mouse_test
 
 
-def main():
+def grid_search():
+    """
+    :return: grid search over different hyperparameter permutations.
+    """
     data, data_human_test, data_mouse_test = get_data()
     results_path = dir_path + '/results/DANN'
     column_names = ["N Layers", "Dense Size", "Activation Function", "Drop Rate", "Optimizer",
-               "N Epochs", "Weight Decay", "Learning Rate", "Batch Size", "Lambda",
-               "Total Accuracy", "Human Accuracy", "Mouse Accuracy"]
+                    "N Epochs", "Weight Decay", "Learning Rate", "Batch Size", "Lambda",
+                    "Total Accuracy", "Human Accuracy", "Mouse Accuracy"]
     results = pd.DataFrame(columns=column_names)
     # Hyperparameter grid search
     layers = [6, 5, 4, 3, 2, 1]
-    wds = [0.01, 0.001, 0.1, 0.0001]
+    wds = [0.001, 0.0001, 0.01, 0.1]
     dense_sizes = [[27, 128, 64, 32, 16, 8], [64, 256, 128, 64, 32, 32], [27, 32, 64, 128, 64, 32],
                    [256, 512, 1024, 128, 64, 32], [27, 32, 32, 16, 16, 8], [27, 20, 16, 10, 8, 4]]
-    afs = [['swish', 'swish', 'swish', 'swish', 'swish', 'swish'], ['relu', 'relu', 'relu', 'relu', 'relu', 'relu'],
-           ['swish', 'swish', 'swish', 'relu', 'relu', 'relu']]
+    afs = [['swish', 'swish', 'swish', 'swish', 'swish', 'swish'],
+           ['relu', 'relu', 'relu', 'relu', 'relu', 'relu']]
     lrs = [0.01, 0.001, 0.0001, 0.00001]
-    drops = [[0.4, 0.4, 0.4, 0.4, 0.4, 0.4], [0.2, 0.2, 0.2, 0.2, 0.2, 0.2],
-             [0.1, 0.1, 0.1, 0.2, 0.2, 0.2], [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]]
-    batches = [64]
+    drops = [[0.4, 0.4, 0.4, 0.4, 0.4, 0.4], [0.2, 0.2, 0.2, 0.2, 0.2, 0.2], [0.1, 0.1, 0.1, 0.1, 0.1, 0.1]]
+    batches = [32]
     epochs = [1024]
-    optimizers = ['adam', 'sgd']
+    optimizers = ['adam', 'sgd', 'rmsprop']
     lambdas = [0.3, 0.32, 0.33, 0.35, 0.37, 0.4, 0.45, 0.48, 0.5, 0.52, 0.55, 0.6, 0.65, 0.7, 0.75, 0.8,
                1, 1.1, 1.2, 1.3, 1.5, 2, 2.5, 3, 3.5, 4, 4.5, 5, 6, 7, 8, 9, 10]
 
@@ -279,7 +273,7 @@ def main():
                           batch_size=8,
                           n_epochs=1,
                           optimizer='adam',
-                          dp_lambda=1)
+                          lamda=1)
     # Preprocess data
     scaler = StandardScaler()
     data_human_test = DANN.preprocess_data(data_human_test)
@@ -330,16 +324,16 @@ def main():
                                                                   batch_size=batch,
                                                                   n_epochs=epoch,
                                                                   optimizer=optimizer,
-                                                                  dp_lambda=lamda)
+                                                                  lamda=lamda)
                                             loss, acc = DANN.train_and_test()
 
                                             # Test network on test human data
                                             print('Human Test:')
-                                            human_loss, human_acc = DANN.test_label_predictions(x_human, y_label_human)
+                                            human_loss, human_acc = DANN.test(x_human, y_label_human)
 
                                             # Test network on test mouse data
                                             print('Mouse Test:')
-                                            mouse_loss, mouse_acc = DANN.test_label_predictions(x_mouse, y_label_mouse)
+                                            mouse_loss, mouse_acc = DANN.test(x_mouse, y_label_mouse)
 
                                             results.loc[n_run] = [layer, ds, af, drop, optimizer,
                                                                   epoch, wd, lr, batch, lamda,
@@ -347,7 +341,7 @@ def main():
                                             n_run += 1
                                             results.to_csv(os.path.join(results_path, 'DANN_results.csv'), index=True)
 
-                                            if human_acc > 0.94 and mouse_acc > 0.92:
+                                            if human_acc > 0.94 and mouse_acc > 0.93:
                                                 print("hyper parameters found!")
                                                 print("Results are:")
                                                 print("=============================================================")
@@ -358,6 +352,61 @@ def main():
                                                 print("Batch size: {0}, Lambda: {1}".format(batch, lamda))
                                                 print("=============================================================")
                                                 return True
+
+    """
+    Grid Search Results:
+    ----------------------------------------------------------------
+    Num layers: 6, Network architecture: [27, 128, 64, 32, 16, 8]
+    Activations: ['swish', 'swish', 'swish', 'relu', 'relu', 'relu'], Drop rates: [0.2, 0.2, 0.2, 0.2, 0.2, 0.2]
+    Optimizer: adam, N_epochs: 1024
+    Weight decay: 0.001, Learning rate: 0.01
+    Batch size: 64, Lambda: 0.7
+    Label Accuracy: 0.9387755102040817
+    Human Test:
+    Accuracy: 0.9242424242424242
+    Mouse Test:
+    Accuracy: 0.9216300940438872
+    """
+
+
+def run_best_model():
+    data, data_human_test, data_mouse_test = get_data()
+
+    DANN = DANNClassifier(db=data, n_layers=6, weight_decay=0.001, dense_size=[27, 128, 64, 32, 16, 8],
+                          activation_function=['swish', 'swish', 'swish', 'swish', 'swish', 'swish'],
+                          learning_rate=0.01, drop_rate=[0.4, 0.4, 0.4, 0.4, 0.4, 0.4],
+                          batch_size=32, n_epochs=1024, optimizer='adam',
+                          lamda=0.3)
+    loss, acc = DANN.train_and_test()
+
+    # Test network on test human data
+    scaler = StandardScaler()
+    data_human_test = DANN.preprocess_data(data_human_test)
+    data_human_test = data_human_test.drop('organism', axis=1)
+    y_label_human = data_human_test.pop('dendrite_type')
+    y_label_human = y_label_human.values.astype(np.float32)
+    y_label_human = to_categorical(y_label_human, num_classes=n_classes)
+    x_human = data_human_test.values.astype(np.float32)
+    x_human = scaler.fit_transform(x_human)
+    print('Human Test:')
+    human_loss, human_acc = DANN.test(x_human, y_label_human)
+
+    # Test network on test mouse data
+    data_mouse_test = DANN.preprocess_data(data_mouse_test)
+    data_mouse_test = data_mouse_test.drop('organism', axis=1)
+    y_label_mouse = data_mouse_test.pop('dendrite_type')
+    y_label_mouse = y_label_mouse.values.astype(np.float32)
+    y_label_mouse = to_categorical(y_label_mouse, num_classes=n_classes)
+    x_mouse = data_mouse_test.values.astype(np.float32)
+    x_mouse = scaler.fit_transform(x_mouse)
+    print('Mouse Test:')
+    mouse_loss, mouse_acc = DANN.test(x_mouse, y_label_mouse)
+
+    plt.show()
+
+
+def main():
+    run_best_model()
 
 
 if __name__ == '__main__':
@@ -372,8 +421,5 @@ if __name__ == '__main__':
         print("Name:", cpu.name, "  Type:", cpu.device_type)
 
     device = input("Enter device (such as /device:GPU:0 or /device:CPU:0): ")
-    try:
-        with tf.device(device):
-            main()
-    except ValueError:
-        print("Unavailable device, please enter /device/GPU:id or /device/CPU:id")
+    with tf.device(device):
+        main()
