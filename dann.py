@@ -15,8 +15,8 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 import os
 
-os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 dir_path = os.path.dirname(os.path.realpath(__file__))
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 n_classes = 2
 n_domains = 2
 
