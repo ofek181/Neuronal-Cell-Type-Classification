@@ -1,4 +1,5 @@
 from abc import ABC
+import random
 import numpy as np
 import pandas as pd
 import tensorflow as tf
@@ -15,6 +16,11 @@ from helper_functions import calculate_metrics
 import matplotlib.pyplot as plt
 import seaborn as sns
 import os
+
+os.environ['PYTHONHASHSEED'] = str(42)
+tf.random.set_seed(42)
+np.random.seed(42)
+random.seed(42)
 
 dir_path = os.path.dirname(os.path.realpath(__file__))
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
@@ -49,7 +55,7 @@ class GradientReversal(Layer):
         return self.grad_reverse(inputs)
 
 
-callbacks = [tf.keras.callbacks.EarlyStopping(patience=10, restore_best_weights=True)]
+callbacks = [tf.keras.callbacks.EarlyStopping(monitor='val_l_pred_loss', patience=5, restore_best_weights=True)]
 
 
 class DANNClassifier(Model, ABC):
@@ -138,7 +144,7 @@ class DANNClassifier(Model, ABC):
                                  validation_data=(x_val, {'l_pred': y_val[:, 0, :], 'd_pred': y_val[:, 1, :]}),
                                  epochs=self.n_epochs, batch_size=self._batch_size, callbacks=callbacks, verbose=0)
         # Plot history
-        self.plot_history(history)
+        # self.plot_history(history)
 
         # Test the model
         y_test = y_test[:, 0, :]  # get true class labels and lose domain labels during testing
@@ -161,13 +167,13 @@ class DANNClassifier(Model, ABC):
         l_acc = accuracy_score(l_true, l_pred)
         print("Accuracy: " + str(l_acc))
         # plot confusion matrix
-        plt.figure()
-        matrix = confusion_matrix(l_pred, l_true)
-        label_names = ['aspiny', 'spiny']
-        s = sns.heatmap(matrix / np.sum(matrix), annot=True, fmt='.2%',
-                        cmap='Blues', xticklabels=label_names, yticklabels=label_names)
-        s.set(xlabel='Predicted label', ylabel='True label')
-        plt.draw()
+        # plt.figure()
+        # matrix = confusion_matrix(l_pred, l_true)
+        # label_names = ['aspiny', 'spiny']
+        # s = sns.heatmap(matrix / np.sum(matrix), annot=True, fmt='.2%',
+        #                 cmap='Blues', xticklabels=label_names, yticklabels=label_names)
+        # s.set(xlabel='Predicted label', ylabel='True label')
+        # plt.draw()
         return loss, l_acc
 
     def split_train_val_test(self) -> tuple:
@@ -252,17 +258,17 @@ def grid_search():
     results = pd.DataFrame(columns=column_names)
     # Hyperparameter grid search
     layers = [6, 5, 4, 3, 2, 1]
-    wds = [0.001, 0.0001, 0.01, 0.1]
+    wds = [0.0001, 0.001, 0.01, 0.1]
     dense_sizes = [[27, 128, 64, 32, 16, 8], [64, 256, 128, 64, 32, 32], [27, 32, 64, 128, 64, 32],
                    [256, 512, 1024, 128, 64, 32], [27, 32, 32, 16, 16, 8], [27, 20, 16, 10, 8, 4]]
     afs = [['swish', 'swish', 'swish', 'swish', 'swish', 'swish'],
            ['relu', 'relu', 'relu', 'relu', 'relu', 'relu']]
     lrs = [0.01, 0.001, 0.0001, 0.00001]
-    drops = [[0.4, 0.4, 0.4, 0.4, 0.4, 0.4], [0.2, 0.2, 0.2, 0.2, 0.2, 0.2], [0.1, 0.1, 0.1, 0.1, 0.1, 0.1]]
-    batches = [32]
+    drops = [[0.3, 0.3, 0.3, 0.3, 0.3, 0.3], [0.2, 0.2, 0.2, 0.2, 0.2, 0.2], [0.1, 0.1, 0.1, 0.1, 0.1, 0.1]]
+    batches = [64]
     epochs = [1024]
     optimizers = ['adam', 'sgd', 'rmsprop']
-    lambdas = [0.3, 0.32, 0.33, 0.35, 0.37, 0.4, 0.45, 0.48, 0.5, 0.52, 0.55, 0.6, 0.65, 0.7, 0.75, 0.8,
+    lambdas = [0.3, 0.32, 0.35, 0.4, 0.45, 0.48, 0.5, 0.52, 0.55, 0.6, 0.65, 0.7, 0.75, 0.8,
                1, 1.1, 1.2, 1.3, 1.5, 2, 2.5, 3, 3.5, 4, 4.5, 5, 6, 7, 8, 9, 10]
 
     DANN = DANNClassifier(db=data,
@@ -343,7 +349,7 @@ def grid_search():
                                             n_run += 1
                                             results.to_csv(os.path.join(results_path, 'DANN_results.csv'), index=True)
 
-                                            if human_acc > 0.94 and mouse_acc > 0.93:
+                                            if human_acc > 0.9 and mouse_acc > 0.9:
                                                 print("hyper parameters found!")
                                                 print("Results are:")
                                                 print("=============================================================")
@@ -408,7 +414,7 @@ def run_best_model():
 
 
 def main():
-    run_best_model()
+    grid_search()
 
 
 if __name__ == '__main__':
