@@ -64,12 +64,11 @@ class DANNClassifier(Model, ABC):
         for the 'allen cell types' database,
         dealing with the domain shift between mouse neuronal cells and human neuronal cells.
     """
-    def __init__(self, db: pd.DataFrame, n_layers: int, weight_decay: float, dense_size: list,
+    def __init__(self, db: pd.DataFrame, weight_decay: float, dense_size: list,
                  activation_function: list, learning_rate: float, drop_rate: list,
                  batch_size: int, n_epochs: int, optimizer: str = 'adam', lamda: float = 1.0) -> None:
         """
         :param db: database used for training/testing.
-        :param n_layers: number of layer in the model.
         :param weight_decay: l2 regularization value.
         :param dense_size: number of neurons in each dense layer.
         :param activation_function: activation function used in each layer.
@@ -86,7 +85,6 @@ class DANNClassifier(Model, ABC):
         self.dr = drop_rate
         self.af = activation_function
         self.opt = optimizer
-        self._num_layers = n_layers
         self._num_nodes = dense_size
         self._batch_size = batch_size
         self.n_epochs = n_epochs
@@ -105,7 +103,7 @@ class DANNClassifier(Model, ABC):
         x = Dense(self._num_nodes[0], activation=self.af[0],
                   kernel_regularizer=l2(self.wd), bias_regularizer=l2(self.wd))(x)
         x = Dropout(self.dr[0])(x)
-        for i in range(1, self._num_layers):
+        for i in range(1, len(self._num_nodes)):
             x = BatchNormalization()(x)
             x = Dense(self._num_nodes[i], activation=self.af[i],
                       kernel_regularizer=l2(self.wd), bias_regularizer=l2(self.wd))(x)
@@ -252,19 +250,21 @@ def grid_search():
     """
     data, data_human_test, data_mouse_test = get_data()
     results_path = dir_path + '/results/DANN'
-    column_names = ["N Layers", "Dense Size", "Activation Function", "Drop Rate", "Optimizer",
+    column_names = ["Network Architecture", "Activation Function", "Drop Rate", "Optimizer",
                     "N Epochs", "Weight Decay", "Learning Rate", "Batch Size", "Lambda",
                     "Total Accuracy", "Human Accuracy", "Mouse Accuracy"]
     results = pd.DataFrame(columns=column_names)
     # Hyperparameter grid search
-    layers = [6, 5, 4, 3, 2, 1]
     wds = [0.0001, 0.001, 0.01, 0.1]
-    dense_sizes = [[27, 128, 64, 32, 16, 8], [64, 256, 128, 64, 32, 32], [27, 32, 64, 128, 64, 32],
-                   [256, 512, 1024, 128, 64, 32], [27, 32, 32, 16, 16, 8], [27, 20, 16, 10, 8, 4]]
+    dense_sizes = [[64, 128, 256, 128, 64], [32, 64, 128, 64, 32],
+                   [32, 64, 64, 32], [64, 128, 128, 64],
+                   [64, 128, 64], [32, 128, 16], [32, 64, 16], [32, 48, 16],
+                   [32, 16], [64, 32], [32, 32], [16, 16],
+                   [128], [64], [32], [16]]
     afs = [['swish', 'swish', 'swish', 'swish', 'swish', 'swish'],
            ['relu', 'relu', 'relu', 'relu', 'relu', 'relu']]
     lrs = [0.01, 0.001, 0.0001, 0.00001]
-    drops = [[0.3, 0.3, 0.3, 0.3, 0.3, 0.3], [0.2, 0.2, 0.2, 0.2, 0.2, 0.2], [0.1, 0.1, 0.1, 0.1, 0.1, 0.1]]
+    drops = [[0.4, 0.4, 0.4, 0.4, 0.4, 0.4], [0.15, 0.15, 0.15, 0.15, 0.15, 0.15]]
     batches = [64]
     epochs = [1024]
     optimizers = ['adam', 'sgd', 'rmsprop']
@@ -272,7 +272,6 @@ def grid_search():
                1, 1.1, 1.2, 1.3, 1.5, 2, 2.5, 3, 3.5, 4, 4.5, 5, 6, 7, 8, 9, 10]
 
     DANN = DANNClassifier(db=data,
-                          n_layers=1,
                           weight_decay=0.1,
                           dense_size=[100],
                           activation_function=['relu'],
@@ -303,63 +302,61 @@ def grid_search():
 
     n_run = 0
 
-    for layer in layers:
-        for ds in dense_sizes:
-            for af in afs:
-                for drop in drops:
-                    for optimizer in optimizers:
-                        for epoch in epochs:
-                            for wd in wds:
-                                for lr in lrs:
-                                    for batch in batches:
-                                        for lamda in lambdas:
-                                            print("----------------------------------------------------------------")
-                                            print("Run number: " + str(n_run))
-                                            print("----------------------------------------------------------------")
-                                            print("Num layers: {0}, Network architecture: {1}".format(layer, ds))
+    for ds in dense_sizes:
+        for af in afs:
+            for drop in drops:
+                for optimizer in optimizers:
+                    for epoch in epochs:
+                        for wd in wds:
+                            for lr in lrs:
+                                for batch in batches:
+                                    for lamda in lambdas:
+                                        print("----------------------------------------------------------------")
+                                        print("Run number: " + str(n_run))
+                                        print("----------------------------------------------------------------")
+                                        print("Network architecture: {0}".format(ds))
+                                        print("Activations: {0}, Drop rates: {1}".format(af, drop))
+                                        print("Optimizer: {0}, N_epochs: {1}".format(optimizer, epoch))
+                                        print("Weight decay: {0}, Learning rate: {1}".format(wd, lr))
+                                        print("Batch size: {0}, Lambda: {1}".format(batch, lamda))
+
+                                        DANN = DANNClassifier(db=data,
+                                                              weight_decay=wd,
+                                                              dense_size=ds,
+                                                              activation_function=af,
+                                                              learning_rate=lr,
+                                                              drop_rate=drop,
+                                                              batch_size=batch,
+                                                              n_epochs=epoch,
+                                                              optimizer=optimizer,
+                                                              lamda=lamda)
+                                        loss, acc = DANN.train_and_test()
+
+                                        # Test network on test human data
+                                        print('Human Test:')
+                                        human_loss, human_acc = DANN.test(x_human, y_label_human)
+
+                                        # Test network on test mouse data
+                                        print('Mouse Test:')
+                                        mouse_loss, mouse_acc = DANN.test(x_mouse, y_label_mouse)
+
+                                        results.loc[n_run] = [ds, af, drop, optimizer,
+                                                              epoch, wd, lr, batch, lamda,
+                                                              acc, human_acc, mouse_acc]
+                                        n_run += 1
+                                        results.to_csv(os.path.join(results_path, 'DANN_results.csv'), index=True)
+
+                                        if human_acc > 0.9 and mouse_acc > 0.9:
+                                            print("hyper parameters found!")
+                                            print("Results are:")
+                                            print("=============================================================")
+                                            print("Network architecture: {0}".format(ds))
                                             print("Activations: {0}, Drop rates: {1}".format(af, drop))
                                             print("Optimizer: {0}, N_epochs: {1}".format(optimizer, epoch))
                                             print("Weight decay: {0}, Learning rate: {1}".format(wd, lr))
                                             print("Batch size: {0}, Lambda: {1}".format(batch, lamda))
-
-                                            DANN = DANNClassifier(db=data,
-                                                                  n_layers=layer,
-                                                                  weight_decay=wd,
-                                                                  dense_size=ds,
-                                                                  activation_function=af,
-                                                                  learning_rate=lr,
-                                                                  drop_rate=drop,
-                                                                  batch_size=batch,
-                                                                  n_epochs=epoch,
-                                                                  optimizer=optimizer,
-                                                                  lamda=lamda)
-                                            loss, acc = DANN.train_and_test()
-
-                                            # Test network on test human data
-                                            print('Human Test:')
-                                            human_loss, human_acc = DANN.test(x_human, y_label_human)
-
-                                            # Test network on test mouse data
-                                            print('Mouse Test:')
-                                            mouse_loss, mouse_acc = DANN.test(x_mouse, y_label_mouse)
-
-                                            results.loc[n_run] = [layer, ds, af, drop, optimizer,
-                                                                  epoch, wd, lr, batch, lamda,
-                                                                  acc, human_acc, mouse_acc]
-                                            n_run += 1
-                                            results.to_csv(os.path.join(results_path, 'DANN_results.csv'), index=True)
-
-                                            if human_acc > 0.9 and mouse_acc > 0.9:
-                                                print("hyper parameters found!")
-                                                print("Results are:")
-                                                print("=============================================================")
-                                                print("Num layers: {0}, Network architecture: {1}".format(layer, ds))
-                                                print("Activations: {0}, Drop rates: {1}".format(af, drop))
-                                                print("Optimizer: {0}, N_epochs: {1}".format(optimizer, epoch))
-                                                print("Weight decay: {0}, Learning rate: {1}".format(wd, lr))
-                                                print("Batch size: {0}, Lambda: {1}".format(batch, lamda))
-                                                print("=============================================================")
-                                                return True
+                                            print("=============================================================")
+                                            return True
 
     """
     Grid Search Results:
