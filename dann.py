@@ -17,17 +17,18 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 import os
 
-os.environ['PYTHONHASHSEED'] = str(42)
-tf.random.set_seed(42)
-np.random.seed(42)
-random.seed(42)
+# Cancel randomness for reproducibility
+os.environ['PYTHONHASHSEED'] = '0'
+tf.random.set_seed(0)
+np.random.seed(0)
+random.seed(0)
 
 dir_path = os.path.dirname(os.path.realpath(__file__))
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
+
 n_classes = 2
 n_domains = 2
 
-# TODO cancel randomness with set seed
 # TODO add calculate metrics
 # TODO find hyper-parameters that work well for the domain adaptation task
 
@@ -97,24 +98,26 @@ class DANNClassifier(Model, ABC):
         :return: constructed architecture of the model.
         """
         # Feature extractor
-        n_label_columns = 2
-        inputs = Input(shape=(self.data.shape[1]-n_label_columns,), name='input')
-        x = BatchNormalization()(inputs)
-        x = Dense(self._num_nodes[0], activation=self.af[0],
-                  kernel_regularizer=l2(self.wd), bias_regularizer=l2(self.wd))(x)
-        x = Dropout(self.dr[0])(x)
-        for i in range(1, len(self._num_nodes)):
+        x = Input(shape=(self.data.shape[1]-n_classes,), name='input')
+        inputs = x
+        for i in range(len(self._num_nodes)):
             x = BatchNormalization()(x)
             x = Dense(self._num_nodes[i], activation=self.af[i],
-                      kernel_regularizer=l2(self.wd), bias_regularizer=l2(self.wd))(x)
+                      kernel_regularizer=l2(self.wd), bias_regularizer=l2(self.wd),
+                      kernel_initializer=tf.keras.initializers.Ones(),
+                      bias_initializer=tf.keras.initializers.Zeros())(x)
             x = Dropout(self.dr[i])(x)
 
         # Label predictor
-        label = Dense(n_classes, activation='softmax', name='l_pred')(x)
+        label = Dense(n_classes, activation='softmax', name='l_pred',
+                      kernel_initializer=tf.keras.initializers.Ones(),
+                      bias_initializer=tf.keras.initializers.Zeros())(x)
 
         # Domain predictor
         flipped_grad = GradientReversal(self.dp_lambda)(x)
-        domain = Dense(n_domains, activation='softmax', name='d_pred')(flipped_grad)
+        domain = Dense(n_domains, activation='softmax', name='d_pred',
+                       kernel_initializer=tf.keras.initializers.Ones(),
+                       bias_initializer=tf.keras.initializers.Zeros())(flipped_grad)
 
         # Define model using Keras' functional API
         model = Model(inputs=inputs, outputs=[label, domain])
@@ -135,12 +138,13 @@ class DANNClassifier(Model, ABC):
             opt = RMSprop(learning_rate=self.lr, decay=self.lr/self.n_epochs)
 
         # Compile model
-        self.model.compile(loss={'l_pred': 'categorical_crossentropy','d_pred': 'categorical_crossentropy'},
+        self.model.compile(loss={'l_pred': 'categorical_crossentropy', 'd_pred': 'categorical_crossentropy'},
                            optimizer=opt, metrics="accuracy")
         # Fit model
         history = self.model.fit(x_train, {'l_pred': y_train[:, 0, :], 'd_pred': y_train[:, 1, :]},
                                  validation_data=(x_val, {'l_pred': y_val[:, 0, :], 'd_pred': y_val[:, 1, :]}),
-                                 epochs=self.n_epochs, batch_size=self._batch_size, callbacks=callbacks, verbose=0)
+                                 epochs=self.n_epochs, batch_size=self._batch_size, callbacks=callbacks, verbose=0,
+                                 shuffle=False, use_multiprocessing=False)
         # Plot history
         # self.plot_history(history)
 
@@ -190,8 +194,9 @@ class DANNClassifier(Model, ABC):
         y[:, 1, :] = y_domain
         x = self.data.values.astype(np.float32)
         x = scaler.fit_transform(x)
-        x_train, x_val, y_train, y_val = train_test_split(x, y, train_size=0.85, random_state=42)
-        x_train, x_test, y_train, y_test = train_test_split(x_train, y_train, train_size=0.7, random_state=42)
+        x_train, x_val, y_train, y_val = train_test_split(x, y, train_size=0.85, random_state=0, shuffle=False)
+        x_train, x_test, y_train, y_test = train_test_split(x_train, y_train, train_size=0.7,
+                                                            random_state=0, shuffle=False)
         return x_train, y_train, x_val, y_val, x_test, y_test
 
     @staticmethod
@@ -236,10 +241,10 @@ def get_data() -> tuple:
     dataframe_name = 'extracted_mean_ephys_data.csv'
     data_mouse = pd.read_csv(dataframe_path_mouse + '/' + dataframe_name)
     data_mouse['organism'] = 0
-    data_mouse, data_mouse_test = train_test_split(data_mouse, test_size=0.2)
+    data_mouse, data_mouse_test = train_test_split(data_mouse, test_size=0.2, random_state=0, shuffle=False)
     data_human = pd.read_csv(dataframe_path_human + '/' + dataframe_name)
     data_human['organism'] = 1
-    data_human, data_human_test = train_test_split(data_human, test_size=0.2)
+    data_human, data_human_test = train_test_split(data_human, test_size=0.2, random_state=0, shuffle=False)
     data = data_mouse.append(data_human, ignore_index=True)
     return data, data_human_test, data_mouse_test
 
@@ -255,21 +260,21 @@ def grid_search():
                     "Total Accuracy", "Human Accuracy", "Mouse Accuracy"]
     results = pd.DataFrame(columns=column_names)
     # Hyperparameter grid search
-    wds = [0.0001, 0.001, 0.01, 0.1]
-    dense_sizes = [[64, 128, 256, 128, 64], [32, 64, 128, 64, 32],
-                   [32, 64, 64, 32], [64, 128, 128, 64],
-                   [64, 128, 64], [32, 128, 16], [32, 64, 16], [32, 48, 16],
-                   [32, 16], [64, 32], [32, 32], [16, 16],
-                   [128], [64], [32], [16]]
-    afs = [['swish', 'swish', 'swish', 'swish', 'swish', 'swish'],
-           ['relu', 'relu', 'relu', 'relu', 'relu', 'relu']]
+    wds = [0.0001, 0.001, 0.01]
+    # dense_sizes = [[64, 128, 64], [32, 64, 8], [32, 64, 16], [32, 48, 16],
+    #                [32, 16], [64, 32], [32, 32], [16, 16],
+    #                [32, 64, 64, 32], [64, 128, 128, 64],
+    #                [64, 128, 256, 128, 64], [32, 64, 128, 64, 32],
+    #                [128], [64], [32], [16]]
+    # dense_sizes = [[128, 64, 32], [256, 128, 64, 32], [128, 64], [64, 32]]
+    dense_sizes = [[128, 64], [64, 32]]
+    afs = [['relu', 'relu'], ['swish', 'swish']]
     lrs = [0.01, 0.001, 0.0001, 0.00001]
-    drops = [[0.4, 0.4, 0.4, 0.4, 0.4, 0.4], [0.15, 0.15, 0.15, 0.15, 0.15, 0.15]]
+    drops = [[0.3, 0.3], [0.1, 0.1]]
     batches = [64]
-    epochs = [1024]
+    epochs = [512]
     optimizers = ['adam', 'sgd', 'rmsprop']
-    lambdas = [0.3, 0.32, 0.35, 0.4, 0.45, 0.48, 0.5, 0.52, 0.55, 0.6, 0.65, 0.7, 0.75, 0.8,
-               1, 1.1, 1.2, 1.3, 1.5, 2, 2.5, 3, 3.5, 4, 4.5, 5, 6, 7, 8, 9, 10]
+    lambdas = [0.15, 0.25, 0.3, 0.33, 0.38, 0.42, 0.45, 0.5, 0.55, 0.6, 0.65, 0.7, 0.8, 0.9, 1, 1.2, 1.5]
 
     DANN = DANNClassifier(db=data,
                           weight_decay=0.1,
@@ -358,30 +363,15 @@ def grid_search():
                                             print("=============================================================")
                                             return True
 
-    """
-    Grid Search Results:
-    ----------------------------------------------------------------
-    Num layers: 6, Network architecture: [27, 128, 64, 32, 16, 8]
-    Activations: ['swish', 'swish', 'swish', 'relu', 'relu', 'relu'], Drop rates: [0.2, 0.2, 0.2, 0.2, 0.2, 0.2]
-    Optimizer: adam, N_epochs: 1024
-    Weight decay: 0.001, Learning rate: 0.01
-    Batch size: 64, Lambda: 0.7
-    Label Accuracy: 0.9387755102040817
-    Human Test:
-    Accuracy: 0.9242424242424242
-    Mouse Test:
-    Accuracy: 0.9216300940438872
-    """
-
 
 def run_best_model():
     data, data_human_test, data_mouse_test = get_data()
 
-    DANN = DANNClassifier(db=data, n_layers=6, weight_decay=0.001, dense_size=[27, 128, 64, 32, 16, 8],
-                          activation_function=['swish', 'swish', 'swish', 'swish', 'swish', 'swish'],
-                          learning_rate=0.01, drop_rate=[0.4, 0.4, 0.4, 0.4, 0.4, 0.4],
-                          batch_size=32, n_epochs=1024, optimizer='adam',
-                          lamda=0.3)
+    DANN = DANNClassifier(db=data, weight_decay=0.0001, dense_size=[128, 64],
+                          activation_function=['relu', 'relu'],
+                          learning_rate=0.01, drop_rate=[0.3, 0.3],
+                          batch_size=64, n_epochs=512, optimizer='adam',
+                          lamda=0.15)
     loss, acc = DANN.train_and_test()
 
     # Test network on test human data
@@ -411,7 +401,7 @@ def run_best_model():
 
 
 def main():
-    grid_search()
+    run_best_model()
 
 
 if __name__ == '__main__':
