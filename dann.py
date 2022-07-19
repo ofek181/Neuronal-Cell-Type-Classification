@@ -29,7 +29,6 @@ os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 n_classes = 2
 n_domains = 2
 
-# TODO add calculate metrics
 # TODO find hyper-parameters that work well for the domain adaptation task
 
 
@@ -143,8 +142,8 @@ class DANNClassifier(Model, ABC):
 
         # Test the model
         y_test = y_test[:, 0, :]  # get true class labels and lose domain labels during testing
-        loss, acc, _, _ = self.test(x_test, y_test)
-        return loss, acc
+        l_acc, l_f1, l_precision, l_recall, l_roc_auc, l_pred, l_true = self.test(x_test, y_test)
+        return l_acc, l_f1, l_precision, l_recall, l_roc_auc
 
     def test(self, x_test: np.ndarray, y_test: np.ndarray) -> tuple:
         """
@@ -159,9 +158,14 @@ class DANNClassifier(Model, ABC):
         l_true = np.argmax(y_test, axis=1)
         loss = cce(y_test, l_pred).numpy()
         l_pred = np.argmax(l_pred, axis=1)
-        l_acc = accuracy_score(l_true, l_pred)
+
+        l_acc, l_f1, l_precision, l_recall, l_roc_auc = calculate_metrics(l_true, l_pred)
         print("Accuracy: " + str(l_acc))
-        return loss, l_acc, l_pred, l_true
+        print("F1 Score: " + str(l_f1))
+        # print("Precision: " + str(l_precision))
+        # print("Recall: " + str(l_recall))
+        # print("ROC AUC: " + str(l_roc_auc))
+        return l_acc, l_f1, l_precision, l_recall, l_roc_auc, l_pred, l_true
 
     def split_train_val_test(self) -> tuple:
         """
@@ -253,7 +257,7 @@ def grid_search():
     results_path = dir_path + '/results/DANN'
     column_names = ["Network Architecture", "Activation Function", "Drop Rate", "Optimizer",
                     "N Epochs", "Weight Decay", "Learning Rate", "Batch Size", "Lambda",
-                    "Total Accuracy", "Human Accuracy", "Mouse Accuracy"]
+                    "Total Accuracy", "Human Accuracy", "Human F1", "Mouse Accuracy", "Mouse F1"]
     results = pd.DataFrame(columns=column_names)
     # Hyperparameter grid search
     wds = [0.0001, 0.001, 0.01]
@@ -325,23 +329,26 @@ def grid_search():
                                                               n_epochs=epoch,
                                                               optimizer=optimizer,
                                                               lamda=lamda)
-                                        loss, acc = DANN.train_and_test()
+                                        l_acc, l_f1, l_precision, l_recall, l_roc_auc = DANN.train_and_test()
 
                                         # Test network on test human data
                                         print('Human Test:')
-                                        loss_h, acc_h, pred_h, true_h = DANN.test(x_human, y_label_human)
+                                        acc_h, f1_h, precision_h, recall_h, roc_auc_h, pred_h, true_h = DANN.test(
+                                            x_human, y_label_human)
 
                                         # Test network on test mouse data
                                         print('Mouse Test:')
-                                        loss_m, acc_m, pred_m, true_m = DANN.test(x_mouse, y_label_mouse)
+                                        acc_m, f1_m, precision_m, recall_m, roc_auc_m, pred_m, true_m = DANN.test(
+                                            x_mouse, y_label_mouse)
 
                                         results.loc[n_run] = [ds, af, drop, optimizer,
                                                               epoch, wd, lr, batch, lamda,
-                                                              acc, acc_h, acc_m]
+                                                              l_acc, acc_h, f1_h, acc_m, f1_m]
                                         n_run += 1
                                         results.to_csv(os.path.join(results_path, 'DANN_results.csv'), index=True)
 
-                                        if acc_h > 0.5 and acc_m > 0.5:
+                                        # TODO decide on good metric for choosing a model
+                                        if precision_m > 0.75 and f1_m > 0.75:
                                             print("hyper parameters found!")
                                             print("Results are:")
                                             print("=============================================================")
@@ -369,7 +376,7 @@ def run_best_model():
                           learning_rate=0.01, drop_rate=[0.3, 0.3],
                           batch_size=64, n_epochs=512, optimizer='adam',
                           lamda=0.15)
-    loss, acc = DANN.train_and_test()
+    DANN.train_and_test()
 
     # Test network on test human data
     scaler = StandardScaler()
@@ -381,7 +388,7 @@ def run_best_model():
     x_human = data_human_test.values.astype(np.float32)
     x_human = scaler.fit_transform(x_human)
     print('Human Test:')
-    human_loss, human_acc, pred, true = DANN.test(x_human, y_label_human)
+    acc_h, f1_h, precision_h, recall_h, roc_auc_h, pred_h, true_h = DANN.test(x_human, y_label_human)
 
     # Test network on test mouse data
     data_mouse_test = DANN.preprocess_data(data_mouse_test)
@@ -392,10 +399,11 @@ def run_best_model():
     x_mouse = data_mouse_test.values.astype(np.float32)
     x_mouse = scaler.fit_transform(x_mouse)
     print('Mouse Test:')
-    mouse_loss, mouse_acc, pred, true = DANN.test(x_mouse, y_label_mouse)
+    acc_m, f1_m, precision_m, recall_m, roc_auc_m, pred_m, true_m = DANN.test(x_mouse, y_label_mouse)
 
     DANN.plot_history(DANN.history)
-    DANN.plot_matrix(pred, true)
+    DANN.plot_matrix(pred_m, true_m, 'Mouse dendrite type classification')
+    DANN.plot_matrix(pred_h, true_h, 'Human dendrite type classification')
     plt.show()
 
 
