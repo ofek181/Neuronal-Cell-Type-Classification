@@ -90,6 +90,7 @@ class DANNClassifier(Model, ABC):
         self._batch_size = batch_size
         self.n_epochs = n_epochs
         self.dp_lambda = lamda
+        self.history = None
         self.data = self.preprocess_data(db)
         self.model = self._create_model()
 
@@ -103,21 +104,15 @@ class DANNClassifier(Model, ABC):
         for i in range(len(self._num_nodes)):
             x = BatchNormalization()(x)
             x = Dense(self._num_nodes[i], activation=self.af[i],
-                      kernel_regularizer=l2(self.wd), bias_regularizer=l2(self.wd),
-                      kernel_initializer=tf.keras.initializers.Ones(),
-                      bias_initializer=tf.keras.initializers.Zeros())(x)
+                      kernel_regularizer=l2(self.wd), bias_regularizer=l2(self.wd))(x)
             x = Dropout(self.dr[i])(x)
 
         # Label predictor
-        label = Dense(n_classes, activation='softmax', name='l_pred',
-                      kernel_initializer=tf.keras.initializers.Ones(),
-                      bias_initializer=tf.keras.initializers.Zeros())(x)
+        label = Dense(n_classes, activation='softmax', name='l_pred')(x)
 
         # Domain predictor
         flipped_grad = GradientReversal(self.dp_lambda)(x)
-        domain = Dense(n_domains, activation='softmax', name='d_pred',
-                       kernel_initializer=tf.keras.initializers.Ones(),
-                       bias_initializer=tf.keras.initializers.Zeros())(flipped_grad)
+        domain = Dense(n_domains, activation='softmax', name='d_pred')(flipped_grad)
 
         # Define model using Keras' functional API
         model = Model(inputs=inputs, outputs=[label, domain])
@@ -141,19 +136,17 @@ class DANNClassifier(Model, ABC):
         self.model.compile(loss={'l_pred': 'categorical_crossentropy', 'd_pred': 'categorical_crossentropy'},
                            optimizer=opt, metrics="accuracy")
         # Fit model
-        history = self.model.fit(x_train, {'l_pred': y_train[:, 0, :], 'd_pred': y_train[:, 1, :]},
-                                 validation_data=(x_val, {'l_pred': y_val[:, 0, :], 'd_pred': y_val[:, 1, :]}),
-                                 epochs=self.n_epochs, batch_size=self._batch_size, callbacks=callbacks, verbose=0,
-                                 shuffle=False, use_multiprocessing=False)
-        # Plot history
-        # self.plot_history(history)
+        self.history = self.model.fit(x_train, {'l_pred': y_train[:, 0, :], 'd_pred': y_train[:, 1, :]},
+                                      validation_data=(x_val, {'l_pred': y_val[:, 0, :], 'd_pred': y_val[:, 1, :]}),
+                                      epochs=self.n_epochs, batch_size=self._batch_size, callbacks=callbacks, verbose=0,
+                                      shuffle=False, use_multiprocessing=False)
 
         # Test the model
         y_test = y_test[:, 0, :]  # get true class labels and lose domain labels during testing
-        loss, acc = self.test(x_test, y_test)
+        loss, acc, _, _ = self.test(x_test, y_test)
         return loss, acc
 
-    def test(self, x_test, y_test) -> tuple:
+    def test(self, x_test: np.ndarray, y_test: np.ndarray) -> tuple:
         """
         :param x_test: testing set
         :param y_test: true testing set labels
@@ -168,15 +161,7 @@ class DANNClassifier(Model, ABC):
         l_pred = np.argmax(l_pred, axis=1)
         l_acc = accuracy_score(l_true, l_pred)
         print("Accuracy: " + str(l_acc))
-        # plot confusion matrix
-        # plt.figure()
-        # matrix = confusion_matrix(l_pred, l_true)
-        # label_names = ['aspiny', 'spiny']
-        # s = sns.heatmap(matrix / np.sum(matrix), annot=True, fmt='.2%',
-        #                 cmap='Blues', xticklabels=label_names, yticklabels=label_names)
-        # s.set(xlabel='Predicted label', ylabel='True label')
-        # plt.draw()
-        return loss, l_acc
+        return loss, l_acc, l_pred, l_true
 
     def split_train_val_test(self) -> tuple:
         """
@@ -200,7 +185,7 @@ class DANNClassifier(Model, ABC):
         return x_train, y_train, x_val, y_val, x_test, y_test
 
     @staticmethod
-    def preprocess_data(df) -> pd.DataFrame:
+    def preprocess_data(df: pd.DataFrame) -> pd.DataFrame:
         """
         :param df: unprocessed dataset.
         :return: processed dataset.
@@ -216,14 +201,25 @@ class DANNClassifier(Model, ABC):
         return db
 
     @staticmethod
+    def plot_matrix(l_pred: np.ndarray, l_true: np.ndarray, title: str) -> None:
+        plt.figure()
+        matrix = confusion_matrix(l_pred, l_true)
+        label_names = ['aspiny', 'spiny']
+        s = sns.heatmap(matrix / np.sum(matrix), annot=True, fmt='.2%',
+                        cmap='Blues', xticklabels=label_names, yticklabels=label_names)
+        s.set(xlabel='Predicted label', ylabel='True label')
+        plt.title(title)
+        plt.draw()
+
+    @staticmethod
     def plot_history(history) -> None:
         """
         :param history: training history data
         :return: plots the training process.
         """
         plt.figure()
-        plt.plot(history.history['l_pred_accuracy'], label='label train accuracy')
-        plt.plot(history.history['val_l_pred_accuracy'], label='label val accuracy')
+        plt.plot(history.history['l_pred_accuracy'], label='train accuracy')
+        plt.plot(history.history['val_l_pred_accuracy'], label='val accuracy')
         plt.xlabel('Epoch')
         plt.ylabel('Accuracy')
         plt.ylim([0.5, 1])
@@ -261,16 +257,10 @@ def grid_search():
     results = pd.DataFrame(columns=column_names)
     # Hyperparameter grid search
     wds = [0.0001, 0.001, 0.01]
-    # dense_sizes = [[64, 128, 64], [32, 64, 8], [32, 64, 16], [32, 48, 16],
-    #                [32, 16], [64, 32], [32, 32], [16, 16],
-    #                [32, 64, 64, 32], [64, 128, 128, 64],
-    #                [64, 128, 256, 128, 64], [32, 64, 128, 64, 32],
-    #                [128], [64], [32], [16]]
-    # dense_sizes = [[128, 64, 32], [256, 128, 64, 32], [128, 64], [64, 32]]
-    dense_sizes = [[128, 64], [64, 32]]
-    afs = [['relu', 'relu'], ['swish', 'swish']]
+    dense_sizes = [[128, 64, 32, 16], [128, 64, 32], [256, 128, 64, 32]]
+    afs = [['selu', 'selu', 'selu', 'selu'], ['swish', 'swish', 'swish', 'swish'], ['relu', 'relu', 'relu', 'relu']]
     lrs = [0.01, 0.001, 0.0001, 0.00001]
-    drops = [[0.3, 0.3], [0.1, 0.1]]
+    drops = [[0.5, 0.5, 0.5, 0.5], [0.25, 0.25, 0.25, 0.25]]
     batches = [64]
     epochs = [512]
     optimizers = ['adam', 'sgd', 'rmsprop']
@@ -339,19 +329,19 @@ def grid_search():
 
                                         # Test network on test human data
                                         print('Human Test:')
-                                        human_loss, human_acc = DANN.test(x_human, y_label_human)
+                                        loss_h, acc_h, pred_h, true_h = DANN.test(x_human, y_label_human)
 
                                         # Test network on test mouse data
                                         print('Mouse Test:')
-                                        mouse_loss, mouse_acc = DANN.test(x_mouse, y_label_mouse)
+                                        loss_m, acc_m, pred_m, true_m = DANN.test(x_mouse, y_label_mouse)
 
                                         results.loc[n_run] = [ds, af, drop, optimizer,
                                                               epoch, wd, lr, batch, lamda,
-                                                              acc, human_acc, mouse_acc]
+                                                              acc, acc_h, acc_m]
                                         n_run += 1
                                         results.to_csv(os.path.join(results_path, 'DANN_results.csv'), index=True)
 
-                                        if human_acc > 0.9 and mouse_acc > 0.9:
+                                        if acc_h > 0.5 and acc_m > 0.5:
                                             print("hyper parameters found!")
                                             print("Results are:")
                                             print("=============================================================")
@@ -361,10 +351,17 @@ def grid_search():
                                             print("Weight decay: {0}, Learning rate: {1}".format(wd, lr))
                                             print("Batch size: {0}, Lambda: {1}".format(batch, lamda))
                                             print("=============================================================")
+                                            DANN.model.save_weights(os.path.join(results_path+'/model', 'weights'))
+                                            print('Model Saved!')
+                                            DANN.plot_history(DANN.history)
+                                            DANN.plot_matrix(pred_m, true_m, 'Mouse dendrite type classification')
+                                            DANN.plot_matrix(pred_h, true_h, 'Human dendrite type classification')
+                                            plt.show()
                                             return True
 
 
 def run_best_model():
+    # TODO change best model to a model which takes weights from the saved model
     data, data_human_test, data_mouse_test = get_data()
 
     DANN = DANNClassifier(db=data, weight_decay=0.0001, dense_size=[128, 64],
@@ -384,7 +381,7 @@ def run_best_model():
     x_human = data_human_test.values.astype(np.float32)
     x_human = scaler.fit_transform(x_human)
     print('Human Test:')
-    human_loss, human_acc = DANN.test(x_human, y_label_human)
+    human_loss, human_acc, pred, true = DANN.test(x_human, y_label_human)
 
     # Test network on test mouse data
     data_mouse_test = DANN.preprocess_data(data_mouse_test)
@@ -395,13 +392,15 @@ def run_best_model():
     x_mouse = data_mouse_test.values.astype(np.float32)
     x_mouse = scaler.fit_transform(x_mouse)
     print('Mouse Test:')
-    mouse_loss, mouse_acc = DANN.test(x_mouse, y_label_mouse)
+    mouse_loss, mouse_acc, pred, true = DANN.test(x_mouse, y_label_mouse)
 
+    DANN.plot_history(DANN.history)
+    DANN.plot_matrix(pred, true)
     plt.show()
 
 
 def main():
-    run_best_model()
+    grid_search()
 
 
 if __name__ == '__main__':
