@@ -1,5 +1,7 @@
 from abc import ABC
 import random
+
+import keras
 import numpy as np
 import pandas as pd
 import tensorflow as tf
@@ -17,13 +19,16 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 import os
 
+dir_path = os.path.dirname(os.path.realpath(__file__))
+results_path = dir_path + '/results/DANN'
+model_path = os.path.join(results_path, 'model')
+
 # Cancel randomness for reproducibility
 os.environ['PYTHONHASHSEED'] = '0'
 tf.random.set_seed(0)
 np.random.seed(0)
 random.seed(0)
 
-dir_path = os.path.dirname(os.path.realpath(__file__))
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 
 n_classes = 2
@@ -50,6 +55,11 @@ class GradientReversal(Layer):
     def __init__(self, lamda: float, **kwargs):
         super(GradientReversal, self).__init__(**kwargs)
         self.lamda = lamda
+
+    def get_config(self):
+        config = super().get_config()
+        config.update({"lamda": self.lamda})
+        return config
 
     def call(self, inputs, *args, **kwargs):
         return self.grad_reverse(inputs)
@@ -152,11 +162,9 @@ class DANNClassifier(Model, ABC):
         :return: loss and accuracy of the testing set.
         """
         # calculate test loss and accuracy
-        cce = tf.keras.losses.CategoricalCrossentropy()
         predictions = self.model.predict(x_test, verbose=1)
         l_pred = predictions[0]
         l_true = np.argmax(y_test, axis=1)
-        loss = cce(y_test, l_pred).numpy()
         l_pred = np.argmax(l_pred, axis=1)
 
         l_acc, l_f1, l_precision, l_recall, l_roc_auc = calculate_metrics(l_true, l_pred)
@@ -188,6 +196,28 @@ class DANNClassifier(Model, ABC):
                                                             random_state=0, shuffle=False)
         return x_train, y_train, x_val, y_val, x_test, y_test
 
+    def get_mouse_human_split_data(self, data_human_test: pd.DataFrame, data_mouse_test: pd.DataFrame):
+        # Preprocess data
+        scaler = StandardScaler()
+        data_human_test = self.preprocess_data(data_human_test)
+        data_human_test = data_human_test.drop('organism', axis=1)
+        data_mouse_test = self.preprocess_data(data_mouse_test)
+        data_mouse_test = data_mouse_test.drop('organism', axis=1)
+
+        y_human = data_human_test.pop('dendrite_type')
+        y_human = y_human.values.astype(np.float32)
+        y_human = to_categorical(y_human, num_classes=n_classes)
+        x_human = data_human_test.values.astype(np.float32)
+        x_human = scaler.fit_transform(x_human)
+
+        y_mouse = data_mouse_test.pop('dendrite_type')
+        y_mouse = y_mouse.values.astype(np.float32)
+        y_mouse = to_categorical(y_mouse, num_classes=n_classes)
+        x_mouse = data_mouse_test.values.astype(np.float32)
+        x_mouse = scaler.fit_transform(x_mouse)
+
+        return x_human, y_human, x_mouse, y_mouse
+
     @staticmethod
     def preprocess_data(df: pd.DataFrame) -> pd.DataFrame:
         """
@@ -213,7 +243,8 @@ class DANNClassifier(Model, ABC):
                         cmap='Blues', xticklabels=label_names, yticklabels=label_names)
         s.set(xlabel='Predicted label', ylabel='True label')
         plt.title(title)
-        plt.draw()
+        name = title + '.png'
+        plt.savefig(fname=os.path.join(results_path, name))
 
     @staticmethod
     def plot_history(history) -> None:
@@ -228,7 +259,7 @@ class DANNClassifier(Model, ABC):
         plt.ylabel('Accuracy')
         plt.ylim([0.5, 1])
         plt.legend(loc='lower right')
-        plt.draw()
+        plt.savefig(fname=os.path.join(results_path, 'History.png'))
 
 
 def get_data() -> tuple:
@@ -254,7 +285,6 @@ def grid_search():
     :return: grid search over different hyperparameter permutations.
     """
     data, data_human_test, data_mouse_test = get_data()
-    results_path = dir_path + '/results/DANN'
     column_names = ["Network Architecture", "Activation Function", "Drop Rate", "Optimizer",
                     "N Epochs", "Weight Decay", "Learning Rate", "Batch Size", "Lambda",
                     "Total Accuracy", "Human Accuracy", "Human F1", "Mouse Accuracy", "Mouse F1"]
@@ -270,37 +300,11 @@ def grid_search():
     optimizers = ['adam', 'sgd', 'rmsprop']
     lambdas = [0.15, 0.25, 0.3, 0.33, 0.38, 0.42, 0.45, 0.5, 0.55, 0.6, 0.65, 0.7, 0.8, 0.9, 1, 1.2, 1.5]
 
-    DANN = DANNClassifier(db=data,
-                          weight_decay=0.1,
-                          dense_size=[100],
-                          activation_function=['relu'],
-                          learning_rate=0.1,
-                          drop_rate=[0.1],
-                          batch_size=8,
-                          n_epochs=1,
-                          optimizer='adam',
-                          lamda=1)
-    # Preprocess data
-    scaler = StandardScaler()
-    data_human_test = DANN.preprocess_data(data_human_test)
-    data_human_test = data_human_test.drop('organism', axis=1)
-    data_mouse_test = DANN.preprocess_data(data_mouse_test)
-    data_mouse_test = data_mouse_test.drop('organism', axis=1)
-
-    y_label_human = data_human_test.pop('dendrite_type')
-    y_label_human = y_label_human.values.astype(np.float32)
-    y_label_human = to_categorical(y_label_human, num_classes=n_classes)
-    x_human = data_human_test.values.astype(np.float32)
-    x_human = scaler.fit_transform(x_human)
-
-    y_label_mouse = data_mouse_test.pop('dendrite_type')
-    y_label_mouse = y_label_mouse.values.astype(np.float32)
-    y_label_mouse = to_categorical(y_label_mouse, num_classes=n_classes)
-    x_mouse = data_mouse_test.values.astype(np.float32)
-    x_mouse = scaler.fit_transform(x_mouse)
+    dummy = DANNClassifier(db=data, weight_decay=0, dense_size=[], activation_function=[], learning_rate=0,
+                           drop_rate=[0], batch_size=0, n_epochs=0, optimizer='adam', lamda=0)
+    x_human, y_human, x_mouse, y_mouse = dummy.get_mouse_human_split_data(data_human_test, data_mouse_test)
 
     n_run = 0
-
     for ds in dense_sizes:
         for af in afs:
             for drop in drops:
@@ -334,12 +338,12 @@ def grid_search():
                                         # Test network on test human data
                                         print('Human Test:')
                                         acc_h, f1_h, precision_h, recall_h, roc_auc_h, pred_h, true_h = DANN.test(
-                                            x_human, y_label_human)
+                                            x_human, y_human)
 
                                         # Test network on test mouse data
                                         print('Mouse Test:')
                                         acc_m, f1_m, precision_m, recall_m, roc_auc_m, pred_m, true_m = DANN.test(
-                                            x_mouse, y_label_mouse)
+                                            x_mouse, y_mouse)
 
                                         results.loc[n_run] = [ds, af, drop, optimizer,
                                                               epoch, wd, lr, batch, lamda,
@@ -347,8 +351,7 @@ def grid_search():
                                         n_run += 1
                                         results.to_csv(os.path.join(results_path, 'DANN_results.csv'), index=True)
 
-                                        # TODO decide on good metric for choosing a model
-                                        if precision_m > 0.75 and f1_m > 0.75:
+                                        if recall_h > 0.9 and f1_m > 0.88:
                                             print("hyper parameters found!")
                                             print("Results are:")
                                             print("=============================================================")
@@ -358,53 +361,33 @@ def grid_search():
                                             print("Weight decay: {0}, Learning rate: {1}".format(wd, lr))
                                             print("Batch size: {0}, Lambda: {1}".format(batch, lamda))
                                             print("=============================================================")
-                                            DANN.model.save_weights(os.path.join(results_path+'/model', 'weights'))
+                                            DANN.model.save(filepath=model_path)
                                             print('Model Saved!')
                                             DANN.plot_history(DANN.history)
                                             DANN.plot_matrix(pred_m, true_m, 'Mouse dendrite type classification')
                                             DANN.plot_matrix(pred_h, true_h, 'Human dendrite type classification')
-                                            plt.show()
                                             return True
 
 
 def run_best_model():
-    # TODO change best model to a model which takes weights from the saved model
     data, data_human_test, data_mouse_test = get_data()
-
-    DANN = DANNClassifier(db=data, weight_decay=0.0001, dense_size=[128, 64],
-                          activation_function=['relu', 'relu'],
-                          learning_rate=0.01, drop_rate=[0.3, 0.3],
-                          batch_size=64, n_epochs=512, optimizer='adam',
-                          lamda=0.15)
-    DANN.train_and_test()
-
-    # Test network on test human data
-    scaler = StandardScaler()
-    data_human_test = DANN.preprocess_data(data_human_test)
-    data_human_test = data_human_test.drop('organism', axis=1)
-    y_label_human = data_human_test.pop('dendrite_type')
-    y_label_human = y_label_human.values.astype(np.float32)
-    y_label_human = to_categorical(y_label_human, num_classes=n_classes)
-    x_human = data_human_test.values.astype(np.float32)
-    x_human = scaler.fit_transform(x_human)
-    print('Human Test:')
-    acc_h, f1_h, precision_h, recall_h, roc_auc_h, pred_h, true_h = DANN.test(x_human, y_label_human)
-
-    # Test network on test mouse data
-    data_mouse_test = DANN.preprocess_data(data_mouse_test)
-    data_mouse_test = data_mouse_test.drop('organism', axis=1)
-    y_label_mouse = data_mouse_test.pop('dendrite_type')
-    y_label_mouse = y_label_mouse.values.astype(np.float32)
-    y_label_mouse = to_categorical(y_label_mouse, num_classes=n_classes)
-    x_mouse = data_mouse_test.values.astype(np.float32)
-    x_mouse = scaler.fit_transform(x_mouse)
-    print('Mouse Test:')
-    acc_m, f1_m, precision_m, recall_m, roc_auc_m, pred_m, true_m = DANN.test(x_mouse, y_label_mouse)
-
-    DANN.plot_history(DANN.history)
-    DANN.plot_matrix(pred_m, true_m, 'Mouse dendrite type classification')
-    DANN.plot_matrix(pred_h, true_h, 'Human dendrite type classification')
-    plt.show()
+    dummy = DANNClassifier(db=data, weight_decay=0, dense_size=[], activation_function=[], learning_rate=0,
+                           drop_rate=[0], batch_size=0, n_epochs=0, optimizer='adam', lamda=0)
+    DANN = keras.models.load_model(filepath=model_path, custom_objects={"GradientReversal": GradientReversal})
+    x_human, y_human, x_mouse, y_mouse = dummy.get_mouse_human_split_data(data_human_test, data_mouse_test)
+    labels = [y_human, y_mouse]
+    tests = ['Human test:', 'Mouse test:']
+    for idx, data in enumerate([x_human, x_mouse]):
+        y_pred = DANN.predict(data, verbose=1)[0]
+        y_pred = np.argmax(y_pred, axis=1)
+        y_true = np.argmax(labels[idx], axis=1)
+        l_acc, l_f1, l_precision, l_recall, l_roc_auc = calculate_metrics(y_true, y_pred)
+        print(tests[idx])
+        print("Accuracy: " + str(l_acc))
+        print("F1 Score: " + str(l_f1))
+        print("Precision: " + str(l_precision))
+        print("Recall: " + str(l_recall))
+        print("ROC AUC: " + str(l_roc_auc))
 
 
 def main():
