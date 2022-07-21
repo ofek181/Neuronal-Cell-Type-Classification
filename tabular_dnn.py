@@ -157,7 +157,7 @@ class DNNClassifier(Model):
         plt.plot(history.history['val_accuracy'], label='val_accuracy')
         plt.xlabel('Epoch')
         plt.ylabel('Accuracy')
-        plt.ylim([0.5, 1])
+        plt.ylim([0, 1])
         plt.legend(loc='lower right')
         plt.draw()
 
@@ -171,9 +171,9 @@ def train(data: pd.DataFrame) -> DNNClassifier:
     :param data: data to be trained on
     :return: a trained DNNClassifier model
     """
-    clf = DNNClassifier(db=data, n_layers=4, weight_decay=0.01, dense_size=[27, 64, 128, 32],
-                        activation_function=['swish', 'swish', 'swish', 'swish'], learning_rate=0.00005,
-                        drop_rate=[0, 0.1, 0.2, 0.3], batch_size=16, n_epochs=1024, optimizer='adam')
+    clf = DNNClassifier(db=data, n_layers=6, weight_decay=0.001, dense_size=[27, 256, 128, 64, 32, 16],
+                        activation_function=['swish', 'swish', 'swish', 'swish', 'swish', 'swish'], learning_rate=0.01,
+                        drop_rate=[0.2, 0.2, 0.2, 0.2, 0.2, 0.2], batch_size=64, n_epochs=1024, optimizer='adam')
     clf.train_and_test()
     return clf
 

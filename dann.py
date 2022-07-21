@@ -1,6 +1,5 @@
 from abc import ABC
 import random
-
 import keras
 import numpy as np
 import pandas as pd
@@ -65,7 +64,7 @@ class GradientReversal(Layer):
         return self.grad_reverse(inputs)
 
 
-callbacks = [tf.keras.callbacks.EarlyStopping(monitor='val_l_pred_loss', patience=5, restore_best_weights=True)]
+callbacks = [tf.keras.callbacks.EarlyStopping(monitor='val_l_pred_loss', patience=30, restore_best_weights=True)]
 
 
 class DANNClassifier(Model, ABC):
@@ -257,7 +256,7 @@ class DANNClassifier(Model, ABC):
         plt.plot(history.history['val_l_pred_accuracy'], label='val accuracy')
         plt.xlabel('Epoch')
         plt.ylabel('Accuracy')
-        plt.ylim([0.5, 1])
+        plt.ylim([0, 1])
         plt.legend(loc='lower right')
         plt.savefig(fname=os.path.join(results_path, 'History.png'))
 
@@ -291,14 +290,14 @@ def grid_search():
     results = pd.DataFrame(columns=column_names)
     # Hyperparameter grid search
     wds = [0.0001, 0.001, 0.01]
-    dense_sizes = [[128, 64, 32, 16], [128, 64, 32], [256, 128, 64, 32]]
-    afs = [['selu', 'selu', 'selu', 'selu'], ['swish', 'swish', 'swish', 'swish'], ['relu', 'relu', 'relu', 'relu']]
-    lrs = [0.01, 0.001, 0.0001, 0.00001]
-    drops = [[0.5, 0.5, 0.5, 0.5], [0.25, 0.25, 0.25, 0.25]]
+    dense_sizes = [[256, 128, 64, 32, 16], [256, 128, 64, 32], [256, 128, 64]]
+    afs = [['selu', 'selu', 'selu', 'selu', 'selu'], ['swish', 'swish', 'swish', 'swish', 'swish']]
+    lrs = [0.1, 0.01, 0.001, 0.0001, 0.00001]
+    drops = [[0.4, 0.4, 0.4, 0.4, 0.4], [0.2, 0.2, 0.2, 0.2, 0.2]]
     batches = [64]
-    epochs = [512]
+    epochs = [1024]
     optimizers = ['adam', 'sgd', 'rmsprop']
-    lambdas = [0.15, 0.25, 0.3, 0.33, 0.38, 0.42, 0.45, 0.5, 0.55, 0.6, 0.65, 0.7, 0.8, 0.9, 1, 1.2, 1.5]
+    lambdas = [0.3, 0.35, 0.42, 0.45, 0.5, 0.55, 0.6, 0.65, 0.7, 0.75, 0.8, 0.9, 1, 1.2, 1.5]
 
     dummy = DANNClassifier(db=data, weight_decay=0, dense_size=[], activation_function=[], learning_rate=0,
                            drop_rate=[0], batch_size=0, n_epochs=0, optimizer='adam', lamda=0)
@@ -351,7 +350,7 @@ def grid_search():
                                         n_run += 1
                                         results.to_csv(os.path.join(results_path, 'DANN_results.csv'), index=True)
 
-                                        if recall_h > 0.9 and f1_m > 0.88:
+                                        if acc_h > 0.93 and acc_m > 0.86:
                                             print("hyper parameters found!")
                                             print("Results are:")
                                             print("=============================================================")
