@@ -1,4 +1,5 @@
 import os
+import random
 import pandas as pd
 import numpy as np
 import tensorflow as tf
@@ -19,6 +20,12 @@ from helper_functions import calculate_metrics
 dir_path = os.path.dirname(os.path.realpath(__file__))
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 n_classes = 2
+
+# Cancel randomness for reproducibility
+os.environ['PYTHONHASHSEED'] = '0'
+tf.random.set_seed(42)
+np.random.seed(42)
+random.seed(42)
 
 
 callbacks = [tf.keras.callbacks.EarlyStopping(patience=10, restore_best_weights=True)]
@@ -99,7 +106,7 @@ class DNNClassifier(Model):
         y_pred, y_test = np.argmax(predictions, axis=1), np.argmax(y_test, axis=1)
         accuracy, f1, precision, recall, roc_auc = calculate_metrics(y_test, y_pred)
 
-        print('====================================================')
+        print('==============================================')
         print("Accuracy: " + str(accuracy))
         print("F1 Score: " + str(f1))
         print("Precision: " + str(precision))
@@ -171,7 +178,7 @@ def train(data: pd.DataFrame) -> DNNClassifier:
     :param data: data to be trained on
     :return: a trained DNNClassifier model
     """
-    clf = DNNClassifier(db=data, n_layers=6, weight_decay=0.001, dense_size=[27, 256, 128, 64, 32, 16],
+    clf = DNNClassifier(db=data, n_layers=6, weight_decay=0.001, dense_size=[26, 256, 128, 64, 32, 16],
                         activation_function=['swish', 'swish', 'swish', 'swish', 'swish', 'swish'], learning_rate=0.01,
                         drop_rate=[0.2, 0.2, 0.2, 0.2, 0.2, 0.2], batch_size=64, n_epochs=1024, optimizer='adam')
     clf.train_and_test()
@@ -187,11 +194,11 @@ def main():
     data_human = pd.read_csv(dataframe_path_human + '/' + dataframe_name)
 
     # train on mouse data
-    print("=================================================")
+    print("==============================================")
     print("Mouse training:")
     dnnclf = train(data_mouse)
     # test human data on trained mouse network
-    print("=================================================")
+    print("==============================================")
     print("Human test on mouse network:")
     human_test = dnnclf.preprocess_data(data_human)
     scaler = StandardScaler()
@@ -203,11 +210,11 @@ def main():
     accuracy_h, f1_h, precision_h, recall_h, roc_auc_h = dnnclf.test(x, y)
 
     # train on human data
-    print("=================================================")
+    print("==============================================")
     print("Human training:")
     dnnclf = train(data_human)
     # test human data on trained mouse network
-    print("=================================================")
+    print("==============================================")
     print("Mouse test on human network:")
     mouse_test = dnnclf.preprocess_data(data_mouse)
     scaler = StandardScaler()
@@ -217,6 +224,8 @@ def main():
     x = mouse_test.values.astype(np.float32)
     x = scaler.fit_transform(x)
     accuracy_m, f1_m, precision_m, recall_m, roc_auc_m = dnnclf.test(x, y)
+
+    dnnclf.model.summary()
 
     # show matplotlib graphs
     plt.show()
