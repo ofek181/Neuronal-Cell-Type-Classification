@@ -18,6 +18,8 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 import os
 
+# TODO delete all columns that are x_y_index
+
 dir_path = os.path.dirname(os.path.realpath(__file__))
 results_path = dir_path + '/results/DANN'
 model_path = os.path.join(results_path, 'model')
@@ -225,7 +227,9 @@ class DANNClassifier(Model, ABC):
         """
         db = df.dropna(axis=1, how='all')
         db = db.dropna(axis=0)
-        irrelevant_columns = ['layer', 'structure_area_abbrev', 'sampling_rate', 'mean_clipped', 'file_name']
+        irrelevant_columns = ['layer', 'structure_area_abbrev', 'sampling_rate', 'mean_clipped', 'file_name',
+                              'mean_threshold_index', 'mean_peak_index', 'mean_trough_index', 'mean_upstroke_index',
+                              'mean_downstroke_index', 'mean_fast_trough_index']
         db = db.drop([x for x in irrelevant_columns if x in df.columns], axis=1)
         db['dendrite_type'] = pd.Categorical(db['dendrite_type'])
         db['dendrite_type'] = db['dendrite_type'].cat.codes
@@ -290,7 +294,7 @@ def grid_search():
     results = pd.DataFrame(columns=column_names)
     # Hyperparameter grid search
     wds = [0.0001, 0.001, 0.01]
-    dense_sizes = [[256, 128, 64, 32, 16], [256, 128, 64, 32], [256, 128, 64]]
+    dense_sizes = [[512, 256, 128, 64, 32], [32, 64, 64, 32], [256, 128, 64, 32, 16], [256, 128, 64]]
     afs = [['selu', 'selu', 'selu', 'selu', 'selu'], ['swish', 'swish', 'swish', 'swish', 'swish']]
     lrs = [0.1, 0.01, 0.001, 0.0001, 0.00001]
     drops = [[0.4, 0.4, 0.4, 0.4, 0.4], [0.2, 0.2, 0.2, 0.2, 0.2]]
@@ -350,7 +354,7 @@ def grid_search():
                                         n_run += 1
                                         results.to_csv(os.path.join(results_path, 'DANN_results.csv'), index=True)
 
-                                        if acc_h > 0.93 and acc_m > 0.86:
+                                        if acc_h > 0.9 and acc_m > 0.87:
                                             print("hyper parameters found!")
                                             print("Results are:")
                                             print("=============================================================")
@@ -390,7 +394,7 @@ def run_best_model():
 
 
 def main():
-    grid_search()
+    run_best_model()
 
 
 if __name__ == '__main__':

@@ -131,7 +131,9 @@ class DNNClassifier(Model):
         """
         db = df.dropna(axis=1, how='all')
         db = db.dropna(axis=0)
-        irrelevant_columns = ['layer', 'structure_area_abbrev', 'sampling_rate', 'mean_clipped', 'file_name']
+        irrelevant_columns = ['layer', 'structure_area_abbrev', 'sampling_rate', 'mean_clipped', 'file_name',
+                              'mean_threshold_index', 'mean_peak_index', 'mean_trough_index', 'mean_upstroke_index',
+                              'mean_downstroke_index', 'mean_fast_trough_index']
         db = db.drop([x for x in irrelevant_columns if x in df.columns], axis=1)
         db['dendrite_type'] = pd.Categorical(db['dendrite_type'])
         db['dendrite_type'] = db['dendrite_type'].cat.codes
@@ -178,7 +180,7 @@ def train(data: pd.DataFrame) -> DNNClassifier:
     :param data: data to be trained on
     :return: a trained DNNClassifier model
     """
-    clf = DNNClassifier(db=data, n_layers=6, weight_decay=0.001, dense_size=[26, 256, 128, 64, 32, 16],
+    clf = DNNClassifier(db=data, n_layers=6, weight_decay=0.001, dense_size=[20, 256, 128, 64, 32, 16],
                         activation_function=['swish', 'swish', 'swish', 'swish', 'swish', 'swish'], learning_rate=0.01,
                         drop_rate=[0.2, 0.2, 0.2, 0.2, 0.2, 0.2], batch_size=64, n_epochs=1024, optimizer='adam')
     clf.train_and_test()
