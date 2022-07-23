@@ -393,6 +393,7 @@ def run_best_model() -> None:
         print("Precision: " + str(l_precision))
         print("Recall: " + str(l_recall))
         print("ROC AUC: " + str(l_roc_auc))
+    DANN.summary()
 
 
 def main():

@@ -23,9 +23,9 @@ n_classes = 2
 
 # Cancel randomness for reproducibility
 os.environ['PYTHONHASHSEED'] = '0'
-tf.random.set_seed(42)
-np.random.seed(42)
-random.seed(42)
+tf.random.set_seed(1)
+np.random.seed(1)
+random.seed(1)
 
 
 callbacks = [tf.keras.callbacks.EarlyStopping(patience=10, restore_best_weights=True)]
@@ -180,9 +180,9 @@ def train(data: pd.DataFrame) -> DNNClassifier:
     :param data: data to be trained on
     :return: a trained DNNClassifier model
     """
-    clf = DNNClassifier(db=data, n_layers=6, weight_decay=0.001, dense_size=[20, 256, 128, 64, 32, 16],
-                        activation_function=['swish', 'swish', 'swish', 'swish', 'swish', 'swish'], learning_rate=0.01,
-                        drop_rate=[0.2, 0.2, 0.2, 0.2, 0.2, 0.2], batch_size=64, n_epochs=1024, optimizer='adam')
+    clf = DNNClassifier(db=data, n_layers=6, weight_decay=0.0001, dense_size=[20, 512, 256, 128, 64, 32],
+                        activation_function=['swish', 'swish', 'swish', 'swish', 'swish', 'swish'], learning_rate=0.1,
+                        drop_rate=[0.2, 0.2, 0.2, 0.2, 0.2, 0.2, 0.2], batch_size=64, n_epochs=1024, optimizer='adam')
     clf.train_and_test()
     return clf
 
