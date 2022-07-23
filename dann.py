@@ -18,8 +18,6 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 import os
 
-# TODO delete all columns that are x_y_index
-
 dir_path = os.path.dirname(os.path.realpath(__file__))
 results_path = dir_path + '/results/DANN'
 model_path = os.path.join(results_path, 'model')
@@ -46,14 +44,14 @@ class GradientReversal(Layer):
         published in the "Journal of Machine Learning Research" 17 (2016) 1-35.
     """
     @tf.custom_gradient
-    def grad_reverse(self, x):
+    def grad_reverse(self, x) -> tuple:
         y = tf.identity(x)
 
-        def custom_grad(dy):
+        def custom_grad(dy) -> tuple:
             return tf.negative(dy) * self.lamda
         return y, custom_grad
 
-    def __init__(self, lamda: float, **kwargs):
+    def __init__(self, lamda: float, **kwargs) -> None:
         super(GradientReversal, self).__init__(**kwargs)
         self.lamda = lamda
 
@@ -197,7 +195,7 @@ class DANNClassifier(Model, ABC):
                                                             random_state=0, shuffle=False)
         return x_train, y_train, x_val, y_val, x_test, y_test
 
-    def get_mouse_human_split_data(self, data_human_test: pd.DataFrame, data_mouse_test: pd.DataFrame):
+    def get_mouse_human_split_data(self, data_human_test: pd.DataFrame, data_mouse_test: pd.DataFrame) -> tuple:
         # Preprocess data
         scaler = StandardScaler()
         data_human_test = self.preprocess_data(data_human_test)
@@ -283,7 +281,7 @@ def get_data() -> tuple:
     return data, data_human_test, data_mouse_test
 
 
-def grid_search():
+def grid_search() -> bool:
     """
     :return: grid search over different hyperparameter permutations.
     """
@@ -354,7 +352,7 @@ def grid_search():
                                         n_run += 1
                                         results.to_csv(os.path.join(results_path, 'DANN_results.csv'), index=True)
 
-                                        if acc_h > 0.9 and acc_m > 0.87:
+                                        if acc_h > 0.9 and acc_m > 0.86:
                                             print("hyper parameters found!")
                                             print("Results are:")
                                             print("=============================================================")
@@ -370,9 +368,13 @@ def grid_search():
                                             DANN.plot_matrix(pred_m, true_m, 'Mouse dendrite type classification')
                                             DANN.plot_matrix(pred_h, true_h, 'Human dendrite type classification')
                                             return True
+    return False
 
 
-def run_best_model():
+def run_best_model() -> None:
+    """
+        run best model based on the one saved from the hyperparameter grid search.
+    """
     data, data_human_test, data_mouse_test = get_data()
     dummy = DANNClassifier(db=data, weight_decay=0, dense_size=[], activation_function=[], learning_rate=0,
                            drop_rate=[0], batch_size=0, n_epochs=0, optimizer='adam', lamda=0)
