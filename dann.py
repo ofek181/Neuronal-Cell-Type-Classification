@@ -33,8 +33,6 @@ os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 n_classes = 2
 n_domains = 2
 
-# TODO find hyper-parameters that work well for the domain adaptation task
-
 
 # Gradient Reversal Layer
 class GradientReversal(Layer):
@@ -292,7 +290,8 @@ def grid_search() -> bool:
     results = pd.DataFrame(columns=column_names)
     # Hyperparameter grid search
     wds = [0.0001, 0.001, 0.01]
-    dense_sizes = [[512, 256, 128, 64, 32], [32, 64, 64, 32], [256, 128, 64, 32, 16], [256, 128, 64]]
+    # dense_sizes = [[512, 256, 128, 64, 32], [32, 64, 64, 32], [256, 128, 64, 32, 16], [256, 128, 64]]
+    dense_sizes = [[20, 10, 5], [32, 16, 8, 4], [128, 64, 32, 16]]
     afs = [['selu', 'selu', 'selu', 'selu', 'selu'], ['swish', 'swish', 'swish', 'swish', 'swish']]
     lrs = [0.1, 0.01, 0.001, 0.0001, 0.00001]
     drops = [[0.4, 0.4, 0.4, 0.4, 0.4], [0.2, 0.2, 0.2, 0.2, 0.2]]
@@ -352,7 +351,7 @@ def grid_search() -> bool:
                                         n_run += 1
                                         results.to_csv(os.path.join(results_path, 'DANN_results.csv'), index=True)
 
-                                        if acc_h > 0.9 and acc_m > 0.86:
+                                        if acc_h > 0.9 and acc_m > 0.9:
                                             print("hyper parameters found!")
                                             print("Results are:")
                                             print("=============================================================")
@@ -397,7 +396,7 @@ def run_best_model() -> None:
 
 
 def main():
-    run_best_model()
+    grid_search()
 
 
 if __name__ == '__main__':
