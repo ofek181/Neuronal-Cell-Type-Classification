@@ -5,10 +5,12 @@ import pandas as pd
 import numpy as np
 import os
 from consts import GAF_IMAGE_SIZE
-from time_series_to_image import activity_to_image_gaf
+from time_series_to_image import activity_to_gaf_rgb, activity_to_gaf
 from imageio import imwrite
 from tqdm import tqdm
 import warnings
+
+# TODO add grayscale gaf maybe it will help
 
 warnings.simplefilter("ignore")
 dir_path = os.path.dirname(os.path.realpath(__file__))
@@ -18,13 +20,21 @@ dataframe_path_mouse = dataframe_path + '/mouse'
 raw_data_path = dir_path + '/data/raw_data'
 raw_data_path_human = raw_data_path + '/human'
 raw_data_path_mouse = raw_data_path + '/mouse'
-gaf_path = dir_path + '/data/images'
+gaf_path = dir_path + '/data/images/gaf_rgb'
+gaf_gray_path = dir_path + '/data/images/gaf_gray'
 gaf_npy_path = gaf_path + '/npy'
 gaf_npy_path_human = gaf_npy_path + '/human'
 gaf_npy_path_mouse = gaf_npy_path + '/mouse'
 gaf_png_path = gaf_path + '/png'
 gaf_png_path_human = gaf_png_path + '/human'
 gaf_png_path_mouse = gaf_png_path + '/mouse'
+gaf_npy_path_gray = gaf_gray_path + '/npy'
+gaf_npy_path_human_gray = gaf_npy_path_gray + '/human'
+gaf_npy_path_mouse_gray = gaf_npy_path_gray + '/mouse'
+gaf_png_path_gray = gaf_gray_path + '/png'
+gaf_png_path_human_gray = gaf_png_path_gray + '/human'
+gaf_png_path_mouse_gray = gaf_png_path_gray + '/mouse'
+
 sample_rate = 50000
 idx = 0
 
@@ -42,7 +52,8 @@ class Downloader:
         self.human = human
         self.esf = EphysSweepFeatureExtractor
         rgb = 3
-        self.images = np.zeros((len(self.cells), GAF_IMAGE_SIZE, GAF_IMAGE_SIZE, rgb))
+        self.images_rgb = np.zeros((len(self.cells), GAF_IMAGE_SIZE, GAF_IMAGE_SIZE, rgb))
+        self.images_gray = np.zeros((len(self.cells), GAF_IMAGE_SIZE, GAF_IMAGE_SIZE, rgb))
         self.labels = np.zeros(len(self.cells))
 
     def _save_gaf_image(self, response: np.ndarray, cell_id: str) -> None:
@@ -52,23 +63,31 @@ class Downloader:
         :return: saves a Gramian Angular Field image to path.
         """
         global idx
-        response_gaf = activity_to_image_gaf(response)
+        response_gaf_rgb = activity_to_gaf_rgb(response)
+        response_gaf_gray = activity_to_gaf(response)
         image_name = '{}_gaf.png'.format(cell_id)
-        scaled_image = 255 * (response_gaf + 1) / 2
-        img = scaled_image.astype(np.uint8)
-        self.images[idx, :, :, :] = img
+        scaled_image_rgb = 255 * (response_gaf_rgb + 1) / 2
+        scaled_image_gray = 255 * (response_gaf_gray + 1) / 2
+        img_rgb = scaled_image_rgb.astype(np.uint8)
+        img_gray = scaled_image_gray.astype(np.uint8)
+        self.images_rgb[idx, :, :, :] = img_rgb
+        self.images_gray[idx, :, :, :] = img_gray
         if self.cells[idx]['dendrite_type'] == 'aspiny':
             self.labels[idx] = 0
             if self.human:
-                imwrite(os.path.join(gaf_png_path_human + '/aspiny', image_name), img)
+                imwrite(os.path.join(gaf_png_path_human + '/aspiny', image_name), img_rgb)
+                imwrite(os.path.join(gaf_png_path_human_gray + '/aspiny', image_name), img_gray)
             else:
-                imwrite(os.path.join(gaf_png_path_mouse + '/aspiny', image_name), img)
+                imwrite(os.path.join(gaf_png_path_mouse + '/aspiny', image_name), img_rgb)
+                imwrite(os.path.join(gaf_png_path_mouse_gray + '/aspiny', image_name), img_gray)
         if self.cells[idx]['dendrite_type'] == 'spiny':
             self.labels[idx] = 1
             if self.human:
-                imwrite(os.path.join(gaf_png_path_human + '/spiny', image_name), img)
+                imwrite(os.path.join(gaf_png_path_human + '/spiny', image_name), img_rgb)
+                imwrite(os.path.join(gaf_png_path_human_gray + '/spiny', image_name), img_gray)
             else:
-                imwrite(os.path.join(gaf_png_path_mouse + '/spiny', image_name), img)
+                imwrite(os.path.join(gaf_png_path_mouse + '/spiny', image_name), img_rgb)
+                imwrite(os.path.join(gaf_png_path_mouse_gray + '/spiny', image_name), img_gray)
         idx += 1
 
     def save_gaf_and_raw_data(self, sweep_data: dict, cell_id: str) -> None:
@@ -171,13 +190,19 @@ class Downloader:
                                             'sampling_rate': sweep_data['sampling_rate']}, **ephys_feats}
         self.save_ephys_data(cell_db)
         if self.human:
-            imgs = '{}/images.npy'.format(gaf_npy_path_human)
-            lbls = '{}/labels.npy'.format(gaf_npy_path_human)
+            imgs_rgb = '{}/images.npy'.format(gaf_npy_path_human)
+            imgs_gray = '{}/images.npy'.format(gaf_npy_path_human_gray)
+            lbls_rgb = '{}/labels.npy'.format(gaf_npy_path_human)
+            lbls_gray = '{}/labels.npy'.format(gaf_npy_path_human_gray)
         else:
-            imgs = '{}/images.npy'.format(gaf_npy_path_mouse)
-            lbls = '{}/labels.npy'.format(gaf_npy_path_mouse)
-        np.save(imgs, self.images)
-        np.save(lbls, self.labels)
+            imgs_rgb = '{}/images.npy'.format(gaf_npy_path_mouse)
+            imgs_gray = '{}/images.npy'.format(gaf_npy_path_mouse_gray)
+            lbls_rgb = '{}/labels.npy'.format(gaf_npy_path_mouse)
+            lbls_gray = '{}/labels.npy'.format(gaf_npy_path_mouse_gray)
+        np.save(imgs_rgb, self.images_rgb)
+        np.save(imgs_gray, self.images_gray)
+        np.save(lbls_rgb, self.labels)
+        np.save(lbls_gray, self.labels)
 
 
 if __name__ == '__main__':
