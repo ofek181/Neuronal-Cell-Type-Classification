@@ -11,6 +11,7 @@ cachetools==4.2.4
 certifi==2022.5.18.1
 chardet==3.0.4
 charset-normalizer==2.0.12
+cloudpickle==2.1.0
 colorama==0.4.4
 cycler==0.11.0
 distro==1.7.0
@@ -23,7 +24,10 @@ google-auth-oauthlib==0.4.6
 google-pasta==0.2.0
 greenlet==1.1.2
 grpcio==1.47.0
+h5py==3.7.0
+hdmf==3.3.1
 idna==3.3
+imageio==2.19.3
 importlib-metadata==4.11.4
 importlib-resources==5.7.1
 Jinja2==2.11.3
@@ -79,10 +83,12 @@ scikit-learn==1.0.2
 scipy==1.7.3
 seaborn==0.11.2
 semver==2.13.0
+shap==0.41.0
 SimpleITK==2.1.1.2
 simplejson==3.17.6
 six==1.16.0
 sklearn==0.0
+slicer==0.0.7
 SQLAlchemy==1.4.37
 statsmodels==0.13.0
 tables==3.6.1
