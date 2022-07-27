@@ -17,6 +17,7 @@ from helper_functions import calculate_metrics
 import matplotlib.pyplot as plt
 import seaborn as sns
 import os
+from gpu_check import get_device
 
 dir_path = os.path.dirname(os.path.realpath(__file__))
 results_path = dir_path + '/results/DANN'
@@ -400,16 +401,6 @@ def main():
 
 
 if __name__ == '__main__':
-    print("Num GPUs Available: ", len(tf.config.list_physical_devices('GPU')))
-    gpus = tf.config.list_physical_devices('GPU')
-    for gpu in gpus:
-        print("Name:", gpu.name, "  Type:", gpu.device_type)
-    print("Num CPUs Available: ", len(tf.config.list_physical_devices('CPU')))
-
-    cpus = tf.config.list_physical_devices('CPU')
-    for cpu in cpus:
-        print("Name:", cpu.name, "  Type:", cpu.device_type)
-
-    device = input("Enter device (such as /device:GPU:0 or /device:CPU:0): ")
+    device = get_device()
     with tf.device(device):
         main()
