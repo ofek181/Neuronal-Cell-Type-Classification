@@ -10,7 +10,6 @@ from imageio import imwrite
 from tqdm import tqdm
 import warnings
 
-# TODO add grayscale gaf maybe it will help
 
 warnings.simplefilter("ignore")
 dir_path = os.path.dirname(os.path.realpath(__file__))
