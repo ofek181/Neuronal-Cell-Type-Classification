@@ -4,10 +4,10 @@ import keras
 import numpy as np
 import pandas as pd
 import tensorflow as tf
-from keras import Model, Input
-from keras.layers import Layer
-from keras.layers import Dense, BatchNormalization, Dropout
-from keras.regularizers import l2
+from tensorflow.keras import Model, Input
+from tensorflow.keras.layers import Layer
+from tensorflow.keras.layers import Dense, BatchNormalization, Dropout
+from tensorflow.keras.regularizers import l2
 from tensorflow.keras.optimizers import Adam, SGD, RMSprop
 from tensorflow.keras.utils import to_categorical
 from sklearn.model_selection import train_test_split
