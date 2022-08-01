@@ -15,9 +15,20 @@ from sklearn.preprocessing import StandardScaler
 from sklearn.metrics import confusion_matrix
 from classifier import Model
 from helper_functions import calculate_metrics
+from gpu_check import get_device
 
-
+# get directories
 dir_path = os.path.dirname(os.path.realpath(__file__))
+dataframe_name = 'extracted_mean_ephys_data.csv'
+dataframe_path_mouse = dir_path + '/data/dataframe/mouse'
+dataframe_path_human = dir_path + '/data/dataframe/human'
+data_mouse = pd.read_csv(dataframe_path_mouse + '/' + dataframe_name)
+data_human = pd.read_csv(dataframe_path_human + '/' + dataframe_name)
+dir_path = os.path.dirname(os.path.realpath(__file__))
+results_mouse = dir_path + '/results/MLP/mouse'
+results_human = dir_path + '/results/MLP/human'
+
+
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 n_classes = 2
 
@@ -188,13 +199,6 @@ def train(data: pd.DataFrame) -> DNNClassifier:
 
 
 def main():
-    # get directories
-    dataframe_name = 'extracted_mean_ephys_data.csv'
-    dataframe_path_mouse = dir_path + '/data/dataframe/mouse'
-    dataframe_path_human = dir_path + '/data/dataframe/human'
-    data_mouse = pd.read_csv(dataframe_path_mouse + '/' + dataframe_name)
-    data_human = pd.read_csv(dataframe_path_human + '/' + dataframe_name)
-
     # train on mouse data
     print("==============================================")
     print("Mouse training:")
@@ -210,6 +214,7 @@ def main():
     x = human_test.values.astype(np.float32)
     x = scaler.fit_transform(x)
     accuracy_h, f1_h, precision_h, recall_h, roc_auc_h = dnnclf.test(x, y)
+    dnnclf.model.save(filepath=results_mouse+'/model')
 
     # train on human data
     print("==============================================")
@@ -226,24 +231,13 @@ def main():
     x = mouse_test.values.astype(np.float32)
     x = scaler.fit_transform(x)
     accuracy_m, f1_m, precision_m, recall_m, roc_auc_m = dnnclf.test(x, y)
+    dnnclf.model.save(filepath=results_human+'/model')
 
     dnnclf.model.summary()
-
-    # show matplotlib graphs
     plt.show()
 
 
 if __name__ == '__main__':
-    print("Num GPUs Available: ", len(tf.config.list_physical_devices('GPU')))
-    gpus = tf.config.list_physical_devices('GPU')
-    for gpu in gpus:
-        print("Name:", gpu.name, "  Type:", gpu.device_type)
-    print("Num CPUs Available: ", len(tf.config.list_physical_devices('CPU')))
-
-    cpus = tf.config.list_physical_devices('CPU')
-    for cpu in cpus:
-        print("Name:", cpu.name, "  Type:", cpu.device_type)
-
-    device = input("Enter device (such as /device:GPU:0 or /device:CPU:0): ")
+    device = get_device()
     with tf.device(device):
         main()
