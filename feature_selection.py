@@ -92,6 +92,7 @@ class EfficientClassifier(Model):
 def main():
     data = [data_human, data_mouse]
     for idx, val in enumerate(['Human data', 'Mouse data']):
+        print(val)
         clf = EfficientClassifier(data[idx])
         clf.plot_data(val)
         clf.train_and_test()
