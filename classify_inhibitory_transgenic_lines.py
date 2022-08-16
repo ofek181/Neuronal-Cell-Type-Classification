@@ -130,7 +130,7 @@ class DNNClassifier(Model):
         cmap = sns.cubehelix_palette(light=0.9, as_cmap=True)
         cm_normalized = df_cm.div(df_cm.sum(axis=0), axis=1)
         sns.heatmap(cm_normalized, cbar=False, annot=True, cmap=cmap, square=True, fmt='.1%', annot_kws={'size': 10})
-        plt.title('Actual vs Predicted')
+        plt.title('Inhibitory neurons classification')
         plt.tight_layout()
         plt.draw()
         return accuracy
