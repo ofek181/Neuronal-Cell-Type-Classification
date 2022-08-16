@@ -65,8 +65,6 @@ class Downloader:
         :param cell: metadata about the cell
         :return: True whether to continue using the cell based on the described tests, else False
         """
-        # TODO understand if this function really needs to be like this
-
         # take only Cre reporters which are positive
         if cell['reporter_status'] != 'positive':
             return False
@@ -92,19 +90,23 @@ class Downloader:
             cell['transgenic_line'] = 'Chat-Vip'
 
         # exclude transgenic lines which are not correlated with their dendrite type
-        spiny_lines = ['Ctgf-T2A-dgCre', 'Nr5a1-Scnn1a', 'Cux2-Slc17',
+        # spiny_lines = ['Ctgf-T2A-dgCre', 'Cux2-Slc17', 'Nr5a1-Scnn1a',
+        #                'Ntsr1-Cre_GN220', 'Rbp4-Cre_KL100', 'Rorb-IRES2-Cre']
+        # aspiny_lines = ['Ndnf-IRES2-dgCre', 'Pvalb-IRES-Cre', 'Sst-IRES-Cre',
+        #                 'Chat-Vip', 'Htr3a-Cre_NO152']
+        spiny_lines = ['Ctgf-T2A-dgCre', 'Cux2-Slc17', 'Nr5a1-Scnn1a',
                        'Ntsr1-Cre_GN220', 'Rbp4-Cre_KL100', 'Rorb-IRES2-Cre']
         aspiny_lines = ['Ndnf-IRES2-dgCre', 'Pvalb-IRES-Cre', 'Sst-IRES-Cre',
                         'Chat-Vip', 'Htr3a-Cre_NO152']
-        if cell['transgenic_line'] not in spiny_lines and cell['transgenic_line'] not in aspiny_lines:
-            return False
 
-        # inhibitory_lines = ['Ndnf-IRES2-dgCre', 'Pvalb-IRES-Cre', 'Sst-IRES-Cre', 'Vip-IRES-Cre']
-        # if cell['dendrite_type'] == 'spiny':
-        #     cell['transgenic_line'] = 'Excitatory'
-        # if cell['dendrite_type'] == 'aspiny':
-        #     if cell['transgenic_line'] not in inhibitory_lines:
-        #         return False
+        # spiny dendritic types correspond to excitatory pyramidal stellate neurons.
+        if cell['dendrite_type'] == 'spiny' and cell['transgenic_line'] not in spiny_lines:
+            return False
+        # aspiny and sparsely spiny dendritic types correspond to inhibitory interneurons
+        if cell['dendrite_type'] == 'sparsely spiny' and cell['transgenic_line'] not in aspiny_lines:
+            return False
+        if cell['dendrite_type'] == 'aspiny' and cell['transgenic_line'] not in aspiny_lines:
+            return False
 
         return True
 
@@ -138,11 +140,12 @@ class Downloader:
                 sweep_data = data_set.get_sweep(sweep_num)
                 ephys_feats = self.get_ephys_features(sweep_data)
                 if self.pipeline_checks(cell):
-                    # TODO what about sparsely spiny?
-                    if cell['dendrite_type'] == 'aspiny':
+                    # aspiny and sparsely spiny dendritic types correspond to inhibitory interneurons
+                    if cell['dendrite_type'] == 'aspiny' or cell['dendrite_type'] == 'sparsely spiny':
                         inhibitory_db[this_cell_id] = {**{'transgenic_line': cell['transgenic_line'],
                                                           'dendrite_type': cell['dendrite_type'],
                                                           'layer': cell['structure_layer_name']}, **ephys_feats}
+                    # spiny dendritic types correspond to excitatory pyramidal stellate neurons.
                     if cell['dendrite_type'] == 'spiny':
                         excitatory_db[this_cell_id] = {**{'transgenic_line': cell['transgenic_line'],
                                                           'dendrite_type': cell['dendrite_type'],
@@ -155,3 +158,5 @@ class Downloader:
 if __name__ == '__main__':
     downloader = Downloader()
     downloader.generate_data()
+
+#
