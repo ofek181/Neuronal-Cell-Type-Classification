@@ -32,7 +32,6 @@ class Downloader:
         df['layer'] = df['layer'].replace(['6a', '6b'], 6)
         df['layer'] = df['layer'].replace('2/3', 2)
         df['layer'] = df['layer'].astype('int')
-        df = df[df['dendrite_type'].isin(['spiny', 'aspiny'])]
         df['file_name'] = df.index
         df.to_csv(os.path.join(dataframe_path_mouse, title), index=False)
 
@@ -90,10 +89,6 @@ class Downloader:
             cell['transgenic_line'] = 'Chat-Vip'
 
         # exclude transgenic lines which are not correlated with their dendrite type
-        # spiny_lines = ['Ctgf-T2A-dgCre', 'Cux2-Slc17', 'Nr5a1-Scnn1a',
-        #                'Ntsr1-Cre_GN220', 'Rbp4-Cre_KL100', 'Rorb-IRES2-Cre']
-        # aspiny_lines = ['Ndnf-IRES2-dgCre', 'Pvalb-IRES-Cre', 'Sst-IRES-Cre',
-        #                 'Chat-Vip', 'Htr3a-Cre_NO152']
         spiny_lines = ['Ctgf-T2A-dgCre', 'Cux2-Slc17', 'Nr5a1-Scnn1a',
                        'Ntsr1-Cre_GN220', 'Rbp4-Cre_KL100', 'Rorb-IRES2-Cre']
         aspiny_lines = ['Ndnf-IRES2-dgCre', 'Pvalb-IRES-Cre', 'Sst-IRES-Cre',
@@ -159,4 +154,3 @@ if __name__ == '__main__':
     downloader = Downloader()
     downloader.generate_data()
 
-#
