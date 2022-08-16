@@ -27,11 +27,11 @@ results_mouse = dir_path + '/results/MLP/transgenic/mouse'
 
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 
-# # Cancel randomness for reproducibility
-# os.environ['PYTHONHASHSEED'] = '0'
-# tf.random.set_seed(1)
-# np.random.seed(1)
-# random.seed(1)
+# Cancel randomness for reproducibility
+os.environ['PYTHONHASHSEED'] = '0'
+tf.random.set_seed(0)
+np.random.seed(0)
+random.seed(0)
 
 
 callbacks = [tf.keras.callbacks.EarlyStopping(patience=10, restore_best_weights=True)]
@@ -58,6 +58,7 @@ class DNNClassifier(Model):
         self.dr = drop_rate
         self.af = activation_function
         self.opt = optimizer
+        self.class_names = {}
         db = self.preprocess_data(db)
         super(DNNClassifier, self).__init__(data=db, num_layers=n_layers, num_neurons=dense_size,
                                             batch_size=batch_size, n_epochs=n_epochs)
@@ -115,30 +116,26 @@ class DNNClassifier(Model):
         print('==============================================')
         print("Accuracy: " + str(accuracy))
 
-        # Plot confusion matrix
-        label_names = ['Exc', 'Ndnf', 'Pvalb', 'Sst', 'Vip']
-        matrix = confusion_matrix(y_test, y_pred)
-        print(matrix)
+        def reverse_labels(tup: tuple) -> list:
+            return [self.class_names[x] for x in tup]
 
-        # df_cm = pd.DataFrame(matrix, columns=np.unique(y_test), index=np.unique(y_test))
-        # df_cm.index.name = 'Actual'
-        # df_cm.columns.name = 'Predicted'
-        # f, ax = plt.subplots(figsize=(15, 15))
-        # cmap = sns.cubehelix_palette(light=1, as_cmap=True)
-        # sns.heatmap(df_cm, cbar=False, annot=True, cmap=cmap, square=True, fmt='.0f',
-        #             annot_kws={'size': 10})
-        # plt.title('Actual vs Predicted')
-        # plt.show()
+        y_true_labeled, y_pred_labeled = reverse_labels(tuple(y_test)), reverse_labels(tuple(y_pred))
 
-        # plt.figure()
-        # s = sns.heatmap(matrix / np.sum(matrix), annot=True, fmt='.2%',
-        #                 cmap='Blues', xticklabels=label_names, yticklabels=label_names)
-        # s.set(xlabel='Predicted label', ylabel='True label')
-        # plt.draw()
+        # plot confusion matrix
+        matrix = confusion_matrix(y_true_labeled, y_pred_labeled)
+        df_cm = pd.DataFrame(matrix, columns=np.unique(y_true_labeled), index=np.unique(y_true_labeled))
+        df_cm.index.name = 'Actual'
+        df_cm.columns.name = 'Predicted'
+        plt.figure()
+        cmap = sns.cubehelix_palette(light=0.9, as_cmap=True)
+        cm_normalized = df_cm.div(df_cm.sum(axis=0), axis=1)
+        sns.heatmap(cm_normalized, cbar=False, annot=True, cmap=cmap, square=True, fmt='.1%', annot_kws={'size': 10})
+        plt.title('Actual vs Predicted')
+        plt.tight_layout()
+        plt.draw()
         return accuracy
 
-    @staticmethod
-    def preprocess_data(df) -> pd.DataFrame:
+    def preprocess_data(self, df) -> pd.DataFrame:
         """
         :param df: raw dataframe.
         :return: processed dataframe.
@@ -150,6 +147,7 @@ class DNNClassifier(Model):
                               'mean_downstroke_index', 'mean_fast_trough_index']
         db = db.drop([x for x in irrelevant_columns if x in df.columns], axis=1)
         db['transgenic_line'] = pd.Categorical(db['transgenic_line'])
+        self.class_names = dict(enumerate(db['transgenic_line'].cat.categories))
         db['transgenic_line'] = db['transgenic_line'].cat.codes
         return db
 
@@ -165,8 +163,8 @@ class DNNClassifier(Model):
         y = to_categorical(y, num_classes=n_classes)
         x = data.values.astype(np.float32)
         x = scaler.fit_transform(x)
-        x_train, x_val, y_train, y_val = train_test_split(x, y, stratify=y, train_size=0.85)
-        x_train, x_test, y_train, y_test = train_test_split(x_train, y_train, stratify=y_train, train_size=0.7)
+        x_train, x_val, y_train, y_val = train_test_split(x, y, train_size=0.9, random_state=42)
+        x_train, x_test, y_train, y_test = train_test_split(x_train, y_train, train_size=0.65, random_state=42)
         return x_train, y_train, x_val, y_val, x_test, y_test
 
     @staticmethod
@@ -194,9 +192,9 @@ def train(data: pd.DataFrame) -> DNNClassifier:
     :param data: data to be trained on
     :return: a trained DNNClassifier model
     """
-    clf = DNNClassifier(db=data, n_layers=6, weight_decay=0.0001, dense_size=[20, 128, 128, 128, 64, 32],
-                        activation_function=['swish', 'swish', 'swish', 'swish', 'swish', 'swish'], learning_rate=0.1,
-                        drop_rate=[0.2, 0.2, 0.2, 0.2, 0.2, 0.2, 0.2], batch_size=64, n_epochs=1024, optimizer='adam')
+    clf = DNNClassifier(db=data, n_layers=4, weight_decay=0.0001, dense_size=[20, 256, 256, 64],
+                        activation_function=['swish', 'swish', 'swish', 'swish'], learning_rate=0.001,
+                        drop_rate=[0.5, 0.5, 0.5, 0.5], batch_size=32, n_epochs=1024, optimizer='adam')
     clf.train_and_test()
     return clf
 
@@ -205,7 +203,7 @@ def main():
     # train on mouse data
     print("==============================================")
     print("Training:")
-    dnnclf = train(data_mouse)
+    clf = train(data_mouse)
     plt.show()
 
 
