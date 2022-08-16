@@ -14,33 +14,33 @@ import seaborn as sns
 from sklearn.preprocessing import StandardScaler
 from sklearn.metrics import confusion_matrix
 from classifier import Model
-from sklearn.metrics import accuracy_score, f1_score, precision_score, recall_score, roc_auc_score
+from sklearn.metrics import accuracy_score
 from gpu_check import get_device
 
-n_classes = 5
+n_classes = 6
 
 # get directories
 dir_path = os.path.dirname(os.path.realpath(__file__))
-dataframe = dir_path + '/data/dataframe/mouse/ephys_transgenic_data.csv'
+dataframe = dir_path + '/data/dataframe/mouse/excitatory_transgenic_data.csv'
 data_mouse = pd.read_csv(dataframe)
 results_mouse = dir_path + '/results/MLP/transgenic/mouse'
 
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 
-# # Cancel randomness for reproducibility
-# os.environ['PYTHONHASHSEED'] = '0'
-# tf.random.set_seed(1)
-# np.random.seed(1)
-# random.seed(1)
+# Cancel randomness for reproducibility
+os.environ['PYTHONHASHSEED'] = '0'
+tf.random.set_seed(1)
+np.random.seed(1)
+random.seed(1)
 
 
-callbacks = [tf.keras.callbacks.EarlyStopping(patience=15, restore_best_weights=True)]
+callbacks = [tf.keras.callbacks.EarlyStopping(patience=10, restore_best_weights=True)]
 
 
 class DNNClassifier(Model):
     def __init__(self, db: pd.DataFrame, n_layers: int, weight_decay: float, dense_size: list,
                  activation_function: list, learning_rate: float, drop_rate: list,
-                 batch_size: int,  n_epochs: int, optimizer: str = 'adam') -> None:
+                 batch_size: int, n_epochs: int, optimizer: str = 'adam') -> None:
         """
         :param db: dataframe for training and testing.
         :param n_layers: number of layer in the model.
@@ -58,6 +58,7 @@ class DNNClassifier(Model):
         self.dr = drop_rate
         self.af = activation_function
         self.opt = optimizer
+        self.class_names = {}
         db = self.preprocess_data(db)
         super(DNNClassifier, self).__init__(data=db, num_layers=n_layers, num_neurons=dense_size,
                                             batch_size=batch_size, n_epochs=n_epochs)
@@ -83,11 +84,11 @@ class DNNClassifier(Model):
         x_train, y_train, x_val, y_val, x_test, y_test = self.split_train_val_test(self.data)
 
         # Assign optimizer
-        opt = Adam(learning_rate=self.lr, decay=self.lr/self.n_epochs)
+        opt = Adam(learning_rate=self.lr, decay=self.lr / self.n_epochs)
         if self.opt == 'sgd':
-            opt = SGD(learning_rate=self.lr, decay=self.lr/self.n_epochs)
+            opt = SGD(learning_rate=self.lr, decay=self.lr / self.n_epochs)
         if self.opt == 'rmsprop':
-            opt = RMSprop(learning_rate=self.lr, decay=self.lr/self.n_epochs)
+            opt = RMSprop(learning_rate=self.lr, decay=self.lr / self.n_epochs)
 
         # Compile model
         self.model.compile(loss='categorical_crossentropy', optimizer=opt, metrics="accuracy")
@@ -115,13 +116,9 @@ class DNNClassifier(Model):
         print('==============================================')
         print("Accuracy: " + str(accuracy))
 
-        # TODO there must be a better way to do this
-        label_names = ['Exc', 'Ndnf', 'Pvalb', 'Sst', 'Vip']
-        y_true_labeled, y_pred_labeled, i = [], [], 0
-        for _ in np.nditer(y_test):
-            y_true_labeled.append(label_names[y_test[i]])
-            y_pred_labeled.append(label_names[y_pred[i]])
-            i += 1
+        def reverse_labels(tup: tuple) -> list:
+            return [self.class_names[x] for x in tup]
+        y_true_labeled, y_pred_labeled = reverse_labels(tuple(y_test)), reverse_labels(tuple(y_pred))
 
         # plot confusion matrix
         matrix = confusion_matrix(y_true_labeled, y_pred_labeled)
@@ -130,14 +127,14 @@ class DNNClassifier(Model):
         df_cm.columns.name = 'Predicted'
         plt.figure()
         cmap = sns.cubehelix_palette(light=0.9, as_cmap=True)
-        sns.heatmap(df_cm, cbar=False, annot=True, cmap=cmap, square=True, fmt='.0f', annot_kws={'size': 10})
+        cm_normalized = df_cm.div(df_cm.sum(axis=0), axis=1)
+        sns.heatmap(cm_normalized, cbar=False, annot=True, cmap=cmap, square=True, fmt='.1%', annot_kws={'size': 10})
         plt.title('Actual vs Predicted')
         plt.tight_layout()
         plt.draw()
         return accuracy
 
-    @staticmethod
-    def preprocess_data(df) -> pd.DataFrame:
+    def preprocess_data(self, df) -> pd.DataFrame:
         """
         :param df: raw dataframe.
         :return: processed dataframe.
@@ -149,6 +146,7 @@ class DNNClassifier(Model):
                               'mean_downstroke_index', 'mean_fast_trough_index']
         db = db.drop([x for x in irrelevant_columns if x in df.columns], axis=1)
         db['transgenic_line'] = pd.Categorical(db['transgenic_line'])
+        self.class_names = dict(enumerate(db['transgenic_line'].cat.categories))
         db['transgenic_line'] = db['transgenic_line'].cat.codes
         return db
 
@@ -164,8 +162,8 @@ class DNNClassifier(Model):
         y = to_categorical(y, num_classes=n_classes)
         x = data.values.astype(np.float32)
         x = scaler.fit_transform(x)
-        x_train, x_val, y_train, y_val = train_test_split(x, y, stratify=y, train_size=0.85)
-        x_train, x_test, y_train, y_test = train_test_split(x_train, y_train, stratify=y_train, train_size=0.7)
+        x_train, x_val, y_train, y_val = train_test_split(x, y, train_size=0.9, random_state=42)
+        x_train, x_test, y_train, y_test = train_test_split(x_train, y_train, train_size=0.65, random_state=42)
         return x_train, y_train, x_val, y_val, x_test, y_test
 
     @staticmethod
@@ -193,9 +191,9 @@ def train(data: pd.DataFrame) -> DNNClassifier:
     :param data: data to be trained on
     :return: a trained DNNClassifier model
     """
-    clf = DNNClassifier(db=data, n_layers=6, weight_decay=0.0001, dense_size=[20, 128, 128, 128, 64, 32],
-                        activation_function=['swish', 'swish', 'swish', 'swish', 'swish', 'swish'], learning_rate=0.1,
-                        drop_rate=[0.2, 0.2, 0.2, 0.2, 0.2, 0.2, 0.2], batch_size=64, n_epochs=1024, optimizer='adam')
+    clf = DNNClassifier(db=data, n_layers=4, weight_decay=0.0001, dense_size=[20, 256, 256, 64],
+                        activation_function=['swish', 'swish', 'swish', 'swish'], learning_rate=0.001,
+                        drop_rate=[0.5, 0.5, 0.5, 0.5], batch_size=32, n_epochs=1024, optimizer='adam')
     clf.train_and_test()
     return clf
 
@@ -204,7 +202,7 @@ def main():
     # train on mouse data
     print("==============================================")
     print("Training:")
-    dnnclf = train(data_mouse)
+    clf = train(data_mouse)
     plt.show()
 
 
