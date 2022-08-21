@@ -99,8 +99,8 @@ class LocallySparse:
         :return: accuracy for the trial.
         """
         self.model_params['lam'] = trial.suggest_loguniform('lam', 0.001, 0.1)
-        self.training_params['lr'] = trial.suggest_loguniform('learning_rate', 0.01, 0.1)
-        self.training_params['num_epoch'] = trial.suggest_categorical('num_epoch', [2000, 5000, 10000])
+        self.training_params['lr'] = trial.suggest_loguniform('learning_rate', 0.001, 0.1)
+        self.training_params['num_epoch'] = trial.suggest_categorical('num_epoch', [500, 1000, 2000])
 
         # specify the model with these parameters and train the model
         self.model = Model(**self.model_params)
@@ -139,6 +139,7 @@ class LocallySparse:
 def main():
     column_names = ["Accuracy", "Lambda", "Learning Rate", "Epoch"]
     results = pd.DataFrame(columns=column_names)
+    title = 'inhibitory_classification.csv'
     clf = LocallySparse(data=data_inhibitory, n_classes=5)
     hidden_architecture = [[200, 100, 50, 20], [100, 50, 20, 10], [100, 50]]
     gating_hidden_architecture = [[100], [50], [10]]
@@ -152,10 +153,10 @@ def main():
                     clf.create_model(hidden_architecture=a, gating_hidden_architecture=b,
                                      display_step=1000, activation_pred=c, activation_gating=d,
                                      feature_selection=True)
-                    acc, lam, lr, epoch = clf.optimize(n_trials=3)
-                    if acc > 0.6:
+                    acc, lam, lr, epoch = clf.optimize(n_trials=100)
+                    if acc > 0.7:
                         results.loc[n_run] = [acc, lam, lr, epoch]
-                        results.to_csv(os.path.join(results_path, 'inhibitory_classification.csv'), index=True)
+                        results.to_csv(os.path.join(results_path, title), index=True)
                         n_run += 1
 
 
