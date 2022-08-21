@@ -1,9 +1,8 @@
+import os
 import numpy as np
-import pkg_resources
 import tensorflow.compat.v1 as tf
 tf.disable_v2_behavior()
-import os
-from sklearn.metrics import pairwise_distances as distance_np
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 
 
 def convertToOneHot(vector, num_classes=None):
