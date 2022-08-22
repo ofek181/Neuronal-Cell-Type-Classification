@@ -136,11 +136,7 @@ class Downloader:
                 ephys_feats = self.get_ephys_features(sweep_data)
                 if self.pipeline_checks(cell):
                     # aspiny and sparsely spiny dendritic types correspond to inhibitory interneurons
-                    # if cell['dendrite_type'] == 'aspiny' or cell['dendrite_type'] == 'sparsely spiny':
-                    #     inhibitory_db[this_cell_id] = {**{'transgenic_line': cell['transgenic_line'],
-                    #                                       'dendrite_type': cell['dendrite_type'],
-                    #                                       'layer': cell['structure_layer_name']}, **ephys_feats}
-                    if cell['dendrite_type'] == 'aspiny':
+                    if cell['dendrite_type'] == 'aspiny' or cell['dendrite_type'] == 'sparsely spiny':
                         inhibitory_db[this_cell_id] = {**{'transgenic_line': cell['transgenic_line'],
                                                           'dendrite_type': cell['dendrite_type'],
                                                           'layer': cell['structure_layer_name']}, **ephys_feats}
