@@ -1,6 +1,8 @@
 import os
 import numpy as np
 import pandas as pd
+import seaborn as sns
+import matplotlib.pyplot as plt
 import tensorflow as tf
 import optuna
 from sklearn.model_selection import train_test_split
@@ -33,7 +35,7 @@ class LocallySparse:
         self.data = data
         self.n_classes = n_classes
         self.model, self.best_model = None, None
-        self.model_params, self.training_params = {}, {}
+        self.model_params, self.training_params, self.class_names = {}, {}, {}
         self.x_train, self.y_train, self.x_val, self.y_val, self.x_test, self.y_test = self._preprocess_data()
 
     def _preprocess_data(self) -> tuple:
@@ -49,6 +51,7 @@ class LocallySparse:
                               'mean_fast_trough_index']
         db = db.drop([x for x in irrelevant_columns if x in db.columns], axis=1)
         db['transgenic_line'] = pd.Categorical(db['transgenic_line'])
+        self.class_names = dict(enumerate(db['transgenic_line'].cat.categories))
         db['transgenic_line'] = db['transgenic_line'].cat.codes
         scaler = StandardScaler()
         y = db.pop('transgenic_line')
@@ -56,8 +59,8 @@ class LocallySparse:
         y = to_categorical(y, num_classes=self.n_classes)
         x = db.values.astype(np.float32)
         x = scaler.fit_transform(x)
-        x_train, x_val, y_train, y_val = train_test_split(x, y, train_size=0.9, random_state=42)
-        x_train, x_test, y_train, y_test = train_test_split(x_train, y_train, train_size=0.65, random_state=42)
+        x_train, x_val, y_train, y_val = train_test_split(x, y, train_size=0.75, random_state=42)
+        x_train, x_test, y_train, y_test = train_test_split(x_train, y_train, train_size=0.8, random_state=42)
         return x_train, y_train, x_val, y_val, x_test, y_test
 
     def _create_metadata(self) -> DataSet_meta:
@@ -78,6 +81,7 @@ class LocallySparse:
         self.model_params = {"input_node": self.x_train.shape[1],
                              "output_node": self.n_classes,
                              "feature_selection": feature_selection,
+                             "activation_gating": 'tanh',
                              "display_step": display_step}
         self.training_params = {'batch_size': self.x_train.shape[0]}
 
@@ -87,23 +91,26 @@ class LocallySparse:
         :return: accuracy for the trial.
         """
         self.model_params['hidden_layers_node'] = trial.suggest_categorical("hidden_layers_node",
-                                                                            [[100, 100, 100, 100],
-                                                                             [256, 256, 256],
-                                                                             [512, 256, 128],
-                                                                             [100, 100, 100],
-                                                                             [64, 32, 16],
-                                                                             [32, 16]])
+                                                                            [[512, 256, 128, 64, 32],
+                                                                             [256, 256, 256, 256, 256],
+                                                                             [128, 128, 128, 128, 128],
+                                                                             [512, 512, 512, 512],
+                                                                             [128, 128, 128, 128],
+                                                                             [64, 64, 64, 64],
+                                                                             [64, 64, 64],
+                                                                             [32, 32, 32],
+                                                                             [32, 16, 16]])
         self.model_params['gating_net_hidden_layers_node'] = trial.suggest_categorical("gating_net_hidden_layers_node",
                                                                                        [[100], [50], [10],
                                                                                         [100, 100], [100, 100, 100],
-                                                                                        [200, 200], [50, 50, 50]])
+                                                                                        [200, 200], [50, 50, 50],
+                                                                                        [128, 128, 128, 128],
+                                                                                        [256, 256, 256, 256]])
         self.model_params['activation_pred'] = trial.suggest_categorical("activation_pred",
                                                                          ['relu', 'l_relu', 'sigmoid', 'tanh'])
-        self.model_params['activation_gating'] = trial.suggest_categorical("activation_gating",
-                                                                           ['relu', 'l_relu', 'sigmoid', 'tanh'])
-        self.model_params['lam'] = trial.suggest_loguniform('lam', 0.0001, 1)
-        self.training_params['lr'] = trial.suggest_loguniform('learning_rate', 0.001, 0.1)
-        self.training_params['num_epoch'] = trial.suggest_categorical('num_epoch', [500, 1000, 5000, 10000])
+        self.model_params['lam'] = trial.suggest_loguniform('lam', 0.01, 2)
+        self.training_params['lr'] = trial.suggest_loguniform('learning_rate', 0.001, 0.5)
+        self.training_params['num_epoch'] = trial.suggest_categorical('num_epoch', [100, 200, 500, 1000, 2000])
 
         self.model = Model(**self.model_params)
         _, _, _, _ = self.model.train(dataset=self._create_metadata(), **self.training_params)
@@ -132,7 +139,6 @@ class LocallySparse:
         best_pred_arch = study.best_params['hidden_layers_node']
         best_gate_arch = study.best_params['gating_net_hidden_layers_node']
         best_activ_pred = study.best_params['activation_pred']
-        best_gate_pred = study.best_params['activation_gating']
         best_lam = study.best_params['lam']
         best_lr = study.best_params['learning_rate']
         best_epoch = study.best_params['num_epoch']
@@ -142,33 +148,41 @@ class LocallySparse:
         print("Best model's prediction architecture: {}".format(best_pred_arch))
         print("Best model's gating architecture: {}".format(best_gate_arch))
         print("Best model's prediction activation function: {}".format(best_activ_pred))
-        print("Best model's gating activation function: {}".format(best_gate_pred))
         print("Best model's lambda: {}".format(best_lam))
         print("Best model's learning rate: {}".format(best_lr))
         print("Best model's num of epochs: {}".format(best_epoch))
         print("Test accuracy : {}".format(accuracy))
         return accuracy
 
+    def plot_gate_matrix(self) -> None:
+        """
+        plots the gate feature selection for each label in the data.
+        """
+        gate_matrix = []
+        test_labels = np.argmax(self.y_test, axis=1)
+
+        for i in range(self.n_classes):
+            label_data = np.empty((0, self.x_test.shape[1]))
+            for j in range(self.x_test.shape[0]):
+                if test_labels[j] == i:
+                    label_data = np.vstack([label_data, self.x_test[j, :]])
+
+            gate_matrix.append(self.best_model.get_prob_alpha(label_data))
+            plt.figure()
+            sns.heatmap(gate_matrix[i], vmin=0, vmax=1)
+            plt.title("Label: {}".format(self.class_names[i]))
+            plt.draw()
+        plt.show()
+
 
 def main():
-    # column_names = ["Accuracy", "Prediction Network Architecture", "Gating Network Architecture",
-    #                 "Prediction Activation Function", "Gating Activation Function",
-    #                 "Lambda", "Learning Rate", "Epoch"]
-    # results = pd.DataFrame(columns=column_names)
-    # title = 'inhibitory_classification.csv'
     clf = LocallySparse(data=data_inhibitory, n_classes=5)
-    clf.create_model(display_step=1000, feature_selection=True)
-    acc = clf.optimize(n_trials=500)
-
-    # TODO find good hyper-parameters
-    # TODO try removing the sparsely spiny class?
-    # TODO filter out spiny-aspiny classes into corresponding labels
-
+    clf.create_model(display_step=100000, feature_selection=True)
+    acc = clf.optimize(n_trials=20000)
+    clf.plot_gate_matrix()
 
 
 if __name__ == '__main__':
     device = get_device()
     with tf.device(device):
         main()
-
-
