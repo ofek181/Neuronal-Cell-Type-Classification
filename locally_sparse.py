@@ -6,7 +6,7 @@ import matplotlib.pyplot as plt
 import tensorflow as tf
 import optuna
 from sklearn.model_selection import train_test_split
-from sklearn.metrics import accuracy_score
+from sklearn.metrics import accuracy_score, confusion_matrix
 from sklearn.preprocessing import StandardScaler
 from tensorflow.keras.utils import to_categorical
 from lspin import Model
@@ -118,6 +118,8 @@ class LocallySparse:
         y_pred = self.model.test(self.x_val)
         y_true = np.argmax(self.y_val, axis=1)
         accuracy = accuracy_score(y_true, y_pred)
+        matrix = confusion_matrix(y_true, y_pred)
+        print(matrix)
         return accuracy
 
     def __callback(self, study, trial) -> None:
@@ -176,9 +178,9 @@ class LocallySparse:
 
 
 def main():
-    clf = LocallySparse(data=data_inhibitory, n_classes=5)
+    clf = LocallySparse(data=data_excitatory, n_classes=6)
     clf.create_model(display_step=100000, feature_selection=True)
-    acc = clf.optimize(n_trials=20000)
+    acc = clf.optimize(n_trials=10000)
     clf.plot_gate_matrix()
 
 
