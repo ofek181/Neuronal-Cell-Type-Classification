@@ -15,9 +15,6 @@ dataframe_path_mouse = dataframe_path + '/mouse'
 
 class Downloader:
     def __init__(self) -> None:
-        """
-        :param human: defines whether to take human cells or mouse cells for the experiment.
-        """
         self.ctc = CellTypesCache()
         self.cells = self.ctc.get_cells(species=[CellTypesApi.MOUSE])
         self.esf = EphysSweepFeatureExtractor
