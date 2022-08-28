@@ -565,7 +565,7 @@ class Model(object):
             raise Exception()
         self.saver.restore(self.sess, model_path)
 
-    def save(self, step, model_dir=None):
+    def save(self, model_dir=None):
         if model_dir == None:
             raise Exception()
         try:
@@ -573,7 +573,7 @@ class Model(object):
         except:
             pass
         model_file = model_dir + "/model"
-        self.saver.save(self.sess, model_file, global_step=step)
+        self.saver.save(self.sess, model_file)
 
     def train(self,
               dataset,
