@@ -1,5 +1,4 @@
 import os
-
 import keras
 import numpy as np
 import pandas as pd
@@ -96,26 +95,33 @@ class LocallySparse:
         :param trial: a process of evaluating an objective function using optuna.
         :return: accuracy for the trial.
         """
+        # self.model_params['hidden_layers_node'] = trial.suggest_categorical("hidden_layers_node",
+        #                                                                     [[512, 512, 128, 64, 32],
+        #                                                                      [256, 256, 256, 256, 256],
+        #                                                                      [128, 128, 128, 128, 128],
+        #                                                                      [512, 512, 512, 512],
+        #                                                                      [128, 128, 128, 128],
+        #                                                                      [64, 64, 64, 64],
+        #                                                                      [64, 64, 64],
+        #                                                                      [32, 32, 32],
+        #                                                                      [32, 16, 16]])
         self.model_params['hidden_layers_node'] = trial.suggest_categorical("hidden_layers_node",
-                                                                            [[512, 512, 128, 64, 32],
-                                                                             [256, 256, 256, 256, 256],
-                                                                             [128, 128, 128, 128, 128],
-                                                                             [512, 512, 512, 512],
-                                                                             [128, 128, 128, 128],
+                                                                            [[100, 100, 100, 100],
                                                                              [64, 64, 64, 64],
-                                                                             [64, 64, 64],
+                                                                             [64, 32, 32],
+                                                                             [64, 32, 16],
                                                                              [32, 32, 32],
-                                                                             [32, 16, 16]])
+                                                                             [24, 24, 24],
+                                                                             [20, 20, 20]])
         self.model_params['gating_net_hidden_layers_node'] = trial.suggest_categorical("gating_net_hidden_layers_node",
-                                                                                       [[100], [50], [10],
-                                                                                        [100, 100], [100, 100, 100],
-                                                                                        [200, 200], [50, 50, 50],
-                                                                                        [128, 128, 128, 128],
-                                                                                        [256, 256, 256, 256]])
+                                                                                       [[100], [50], [100, 100],
+                                                                                        [100, 100, 100], [50, 50, 50],
+                                                                                        [128, 128, 128],
+                                                                                        [200, 200, 200, 200]])
         self.model_params['activation_pred'] = trial.suggest_categorical("activation_pred",
                                                                          ['relu', 'l_relu', 'sigmoid', 'tanh'])
         self.model_params['lam'] = trial.suggest_loguniform('lam', 0.001, 0.1)
-        self.training_params['lr'] = trial.suggest_loguniform('learning_rate', 0.001, 0.1)
+        self.training_params['lr'] = trial.suggest_loguniform('learning_rate', 0.001, 0.5)
         self.training_params['num_epoch'] = trial.suggest_categorical('num_epoch', [500, 1000, 1500])
 
         self.model = Model(**self.model_params)
@@ -212,7 +218,7 @@ class LocallySparse:
 
 def main():
     clf = LocallySparse(data=data_all, n_classes=5)
-    clf.create_model(display_step=100, feature_selection=True)
+    clf.create_model(display_step=2000, feature_selection=True)
     clf.optimize(n_trials=5000)
     clf.get_results()
     clf.save_model()
