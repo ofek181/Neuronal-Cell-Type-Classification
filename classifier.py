@@ -3,7 +3,7 @@ import pandas as pd
 
 
 class Model(ABC):
-    def __init__(self, data, num_layers: int = 2, num_neurons: list = [256, 128],
+    def __init__(self, data, num_layers: int = 2, num_neurons=None,
                  batch_size: int = 64, n_epochs: int = 50) -> None:
         """
         :param data: DataFrame containing the train/test data.
@@ -12,6 +12,8 @@ class Model(ABC):
         :param batch_size: batch size for training.
         :param n_epochs: number of epochs during training.
         """
+        if num_neurons is None:
+            num_neurons = [256, 128]
         self.data = data
         self._num_layers = num_layers
         self._num_nodes = num_neurons
