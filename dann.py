@@ -19,18 +19,23 @@ import seaborn as sns
 import os
 from gpu_check import get_device
 
+# get directories
 dir_path = os.path.dirname(os.path.realpath(__file__))
-results_path = dir_path + '/results/DANN'
-model_path = os.path.join(results_path, 'model')
+results_path = dir_path + '/results/dann'
+model_path = results_path + '/model'
+mouse_data = pd.read_csv(dir_path + '/data/mouse/ephys_data.csv')
+human_data = pd.read_csv(dir_path + '/data/human/ephys_data.csv')
+mouse_data['organism'] = 0
+human_data['organism'] = 1
 
-# Cancel randomness for reproducibility
+# cancel randomness for reproducibility
 os.environ['PYTHONHASHSEED'] = '0'
 tf.random.set_seed(0)
 np.random.seed(0)
 random.seed(0)
 
+# configurations
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
-
 n_classes = 2
 n_domains = 2
 
@@ -195,6 +200,11 @@ class DANNClassifier(Model, ABC):
         return x_train, y_train, x_val, y_val, x_test, y_test
 
     def get_mouse_human_split_data(self, data_human_test: pd.DataFrame, data_mouse_test: pd.DataFrame) -> tuple:
+        """
+        :param data_human_test: testing data for human cells.
+        :param data_mouse_test: testing data for mouse cells.
+        :return: processed data for human and mouse.
+        """
         # Preprocess data
         scaler = StandardScaler()
         data_human_test = self.preprocess_data(data_human_test)
@@ -224,10 +234,10 @@ class DANNClassifier(Model, ABC):
         """
         db = df.dropna(axis=1, how='all')
         db = db.dropna(axis=0)
-        irrelevant_columns = ['layer', 'structure_area_abbrev', 'sampling_rate', 'mean_clipped', 'file_name',
-                              'mean_threshold_index', 'mean_peak_index', 'mean_trough_index', 'mean_upstroke_index',
-                              'mean_downstroke_index', 'mean_fast_trough_index']
-        db = db.drop([x for x in irrelevant_columns if x in df.columns], axis=1)
+        irrelevant_columns = ['transgenic_line', 'neurotransmitter', 'reporter_status', 'layer',
+                              'clipped', 'file_name', 'threshold_index','peak_index', 'trough_index',
+                              'upstroke_index', 'downstroke_index', 'fast_trough_index']
+        db = db.drop([x for x in irrelevant_columns if x in df.columns], axis=1, errors='ignore')
         db['dendrite_type'] = pd.Categorical(db['dendrite_type'])
         db['dendrite_type'] = db['dendrite_type'].cat.codes
         db['organism'] = pd.Categorical(db['organism'])
@@ -236,6 +246,12 @@ class DANNClassifier(Model, ABC):
 
     @staticmethod
     def plot_matrix(l_pred: np.ndarray, l_true: np.ndarray, title: str) -> None:
+        """
+        :param l_pred: predicted labels.
+        :param l_true: true labels.
+        :param title: title of the plot.
+        :return: confusion matrix plot for the classification task.
+        """
         plt.figure()
         matrix = confusion_matrix(l_pred, l_true)
         label_names = ['aspiny', 'spiny']
@@ -266,16 +282,8 @@ def get_data() -> tuple:
     """
     :return: tuple of merged mouse/human data, human testing data and mouse testing data.
     """
-    # get data from directories
-    dataframe_path_mouse = dir_path + '/data/dataframe/mouse'
-    dataframe_path_human = dir_path + '/data/dataframe/human'
-    dataframe_name = 'extracted_mean_ephys_data.csv'
-    data_mouse = pd.read_csv(dataframe_path_mouse + '/' + dataframe_name)
-    data_mouse['organism'] = 0
-    data_mouse, data_mouse_test = train_test_split(data_mouse, test_size=0.2, random_state=0, shuffle=False)
-    data_human = pd.read_csv(dataframe_path_human + '/' + dataframe_name)
-    data_human['organism'] = 1
-    data_human, data_human_test = train_test_split(data_human, test_size=0.2, random_state=0, shuffle=False)
+    data_mouse, data_mouse_test = train_test_split(mouse_data, test_size=0.2, random_state=0, shuffle=False)
+    data_human, data_human_test = train_test_split(human_data, test_size=0.2, random_state=0, shuffle=False)
     data = data_mouse.append(data_human, ignore_index=True)
     return data, data_human_test, data_mouse_test
 
@@ -378,12 +386,12 @@ def run_best_model() -> None:
     data, data_human_test, data_mouse_test = get_data()
     dummy = DANNClassifier(db=data, weight_decay=0, dense_size=[], activation_function=[], learning_rate=0,
                            drop_rate=[0], batch_size=0, n_epochs=0, optimizer='adam', lamda=0)
-    DANN = keras.models.load_model(filepath=model_path, custom_objects={"GradientReversal": GradientReversal})
+    model = keras.models.load_model(filepath=model_path, custom_objects={"GradientReversal": GradientReversal})
     x_human, y_human, x_mouse, y_mouse = dummy.get_mouse_human_split_data(data_human_test, data_mouse_test)
     labels = [y_human, y_mouse]
-    tests = ['Human test:', 'Mouse test:']
+    tests = ['Human test', 'Mouse test']
     for idx, data in enumerate([x_human, x_mouse]):
-        y_pred = DANN.predict(data, verbose=1)[0]
+        y_pred = model.predict(data, verbose=1)[0]
         y_pred = np.argmax(y_pred, axis=1)
         y_true = np.argmax(labels[idx], axis=1)
         l_acc, l_f1, l_precision, l_recall, l_roc_auc = calculate_metrics(y_true, y_pred)
@@ -393,11 +401,11 @@ def run_best_model() -> None:
         print("Precision: " + str(l_precision))
         print("Recall: " + str(l_recall))
         print("ROC AUC: " + str(l_roc_auc))
-    DANN.summary()
+        dummy.plot_matrix(y_pred, y_true, tests[idx])
 
 
 def main():
-    grid_search()
+    run_best_model()
 
 
 if __name__ == '__main__':
