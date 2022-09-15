@@ -97,7 +97,7 @@ class Neuron:
         :return: True whether to continue using the cell based on the described tests, else False
         """
         # Discard GABAergic neurons that are not inhibitory (aspiny)
-        if cell['dendrite_type'] == 'aspiny' or cell['dendrite_type'] == 'sparsely spiny':
+        if cell['dendrite_type'] == 'aspiny':
             try:
                 neurotransmitter = self.neurotransmitter[cell['transgenic_line']]
                 if neurotransmitter != 'GABAergic':
