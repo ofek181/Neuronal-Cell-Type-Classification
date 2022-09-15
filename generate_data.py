@@ -54,6 +54,7 @@ class Downloader:
         df['layer'] = df['layer'].replace(['6a', '6b'], 6)
         df['layer'] = df['layer'].replace('2/3', 2)
         df['layer'] = df['layer'].astype('int')
+        df = df[df['dendrite_type'].isin(['spiny', 'aspiny'])]
         df['file_name'] = df.index
         if self.human:
             df.to_csv(os.path.join(path_human, 'ephys_data.csv'), index=False)
