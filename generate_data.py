@@ -130,3 +130,5 @@ class Downloader:
 if __name__ == '__main__':
     downloader = Downloader(human=False)
     downloader.generate_data()
+    downloader = Downloader(human=True)
+    downloader.generate_data()
