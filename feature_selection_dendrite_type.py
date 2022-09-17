@@ -8,24 +8,25 @@ import seaborn as sns
 from classifier import Model
 from helper_functions import calculate_metrics
 
+# get directories
 dir_path = os.path.dirname(os.path.realpath(__file__))
-model_path = dir_path + '/results/MLP/mouse/model'
-dataframe_path_mouse = dir_path + '/data/dataframe/mouse'
-dataframe_path_human = dir_path + '/data/dataframe/human'
-data_mouse = pd.read_csv(dataframe_path_mouse + '/extracted_mean_ephys_data.csv')
-data_human = pd.read_csv(dataframe_path_human + '/extracted_mean_ephys_data.csv')
+data_mouse = pd.read_csv(dir_path + '/data/mouse/ephys_data.csv')
+data_human = pd.read_csv(dir_path + '/data/human/ephys_data.csv')
 
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 
 
 class EfficientClassifier(Model):
+    """
+    EfficientClassifier classifies cells' dendrite types using 2 handpicked features based on their Shapley values.
+    """
     def __init__(self, db: pd.DataFrame) -> None:
         """
         :param db: cell ephys features dataframe.
         """
         db = db.dropna(axis=1, how='all')
         db = db.dropna(axis=0)
-        db = db[['mean_fast_trough_v', 'mean_width', 'dendrite_type']]
+        db = db[['fast_trough_v', 'width', 'dendrite_type']]
         super(EfficientClassifier, self).__init__(db)
 
     def _create_model(self) -> LogisticRegression:
@@ -73,7 +74,7 @@ class EfficientClassifier(Model):
         :param title: the title of the plot
         :return: a scatter plot of the reduced data
         """
-        sns.scatterplot(data=self.data, x="mean_fast_trough_v", y="mean_width", hue="dendrite_type")
+        sns.scatterplot(data=self.data, x="fast_trough_v", y="width", hue="dendrite_type")
         plt.title(title)
         plt.tight_layout()
         plt.show()
@@ -92,6 +93,7 @@ class EfficientClassifier(Model):
 def main():
     data = [data_human, data_mouse]
     for idx, val in enumerate(['Human data', 'Mouse data']):
+        print("====================================")
         print(val)
         clf = EfficientClassifier(data[idx])
         clf.plot_data(val)
@@ -100,5 +102,6 @@ def main():
 
 if __name__ == '__main__':
     main()
+
 
 
