@@ -1,7 +1,7 @@
 import os
 import numpy as np
 import pandas as pd
-from dann import DANNClassifier, GradientReversal, get_data
+from dann_dendrite_type import DANNClassifier, GradientReversal, get_data
 from gpu_check import get_device
 from sklearn.preprocessing import StandardScaler
 import shap
