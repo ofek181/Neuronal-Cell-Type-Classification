@@ -9,7 +9,11 @@ from classifier import Model
 import warnings
 warnings.simplefilter("ignore")
 
+# get directories
 dir_path = os.path.dirname(os.path.realpath(__file__))
+results_path = dir_path + '/results/dann'
+model_path = results_path + '/model'
+mouse_data = pd.read_csv(dir_path + '/data/mouse/ephys_data.csv')
 
 
 class Tsne(Model):
@@ -18,13 +22,12 @@ class Tsne(Model):
         Initializes the model.
         :param db: cell ephys features dataframe.
         """
-        # encoder = LabelEncoder()
-        scaler = StandardScaler()
         db = db.dropna(axis=1, how='all')
         db = db.dropna(axis=0)
-        irrelevant_columns = ['layer', 'structure_area_abbrev', 'sampling_rate', 'mean_clipped', 'file_name']
-        db = db.drop([x for x in irrelevant_columns if x in db.columns], axis=1)
-        db = scaler.fit_transform(db)
+        irrelevant_columns = ['dendrite_type', 'neurotransmitter', 'reporter_status', 'layer',
+                              'clipped', 'file_name', 'threshold_index', 'peak_index', 'trough_index',
+                              'upstroke_index', 'downstroke_index', 'fast_trough_index']
+        db = db.drop([x for x in irrelevant_columns if x in db.columns], axis=1, errors='ignore')
         super(Tsne, self).__init__(db)
 
     def _create_model(self) -> TSNE:
@@ -62,34 +65,18 @@ class Tsne(Model):
         plt.show()
 
 
-def get_data() -> pd.DataFrame:
-    """
-    :return: tuple of merged mouse/human data.
-    """
-    # get data from directories
-    dataframe_path_mouse = dir_path + '/data/dataframe/mouse'
-    dataframe_path_human = dir_path + '/data/dataframe/human'
-    name = 'extracted_mean_ephys_data.csv'
-    data_mouse = pd.read_csv(dataframe_path_mouse + '/' + name)
-    data_human = pd.read_csv(dataframe_path_human + '/' + name)
-    data_mouse['organism'] = 'mouse'
-    data_human['organism'] = 'human'
-    data = data_mouse.append(data_human, ignore_index=True)
-    return data
-
-
 def main():
-    data = get_data()
-    organism_type = data["organism"]
-    dendrite_type = data["dendrite_type"]
-    data = data.drop(["organism", "dendrite_type"], axis=1)
-    tsne = Tsne(data)
+    transgenic_targeting = mouse_data.pop('transgenic_line')
+    tsne = Tsne(mouse_data)
     res = tsne.train_and_test()
-    tsne.plot_tsne(res, organism_type)
+    tsne.plot_tsne(res, transgenic_targeting)
 
 
 if __name__ == '__main__':
     main()
+
+    # TODO optimize
+    # TODO TSne for cre lines
 
 
 
