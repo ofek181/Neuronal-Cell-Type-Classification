@@ -7,11 +7,9 @@ import seaborn as sns
 import os
 
 dir_path = os.path.dirname(os.path.realpath(__file__))
-excitatory_data = pd.read_csv(dir_path + '/data/dataframe/mouse/excitatory_transgenic_data.csv')
-inhibitory_data = pd.read_csv(dir_path + '/data/dataframe/mouse/inhibitory_transgenic_data.csv')
-all_data = pd.read_csv(dir_path + '/data/dataframe/mouse/transcriptomic_taxonomy.csv')
-mouse_data = pd.read_csv(dir_path + '/data/dataframe/mouse/extracted_mean_ephys_data.csv')
-human_data = pd.read_csv(dir_path + '/data/dataframe/human/extracted_mean_ephys_data.csv')
+transgenic_data = pd.read_csv(dir_path + '/data/mouse/ephys_data.csv')
+mouse_data = pd.read_csv(dir_path + '/data/mouse/ephys_data.csv')
+human_data = pd.read_csv(dir_path + '/data/human/ephys_data.csv')
 
 
 class Plotter:
@@ -62,33 +60,11 @@ class Plotter:
         plt.draw()
 
     @staticmethod
-    def plot_transcriptomatic_distribution():
-        plt.figure()
-        plt.title('Distribution of marker genes in excitatory cells')
-        ax = sns.countplot(x="transgenic_line", data=excitatory_data, palette="Set2",
-                           order=excitatory_data['transgenic_line'].value_counts().index)
-        for container in ax.containers:
-            ax.bar_label(container)
-        plt.xticks(rotation=30)
-        plt.tight_layout()
-        plt.draw()
-
-        plt.figure()
-        plt.title('Distribution of marker genes in inhibitory cells')
-        ax = sns.countplot(x="transgenic_line", data=inhibitory_data, palette="Set2",
-                           order=inhibitory_data['transgenic_line'].value_counts().index)
-        for container in ax.containers:
-            ax.bar_label(container)
-        plt.xticks(rotation=30)
-        plt.tight_layout()
-        plt.draw()
-
-    @staticmethod
-    def plot_merged_gene_distribution():
+    def plot_transgenic_targeting():
         plt.figure()
         plt.title('Distribution of t-types (merged)')
-        ax = sns.countplot(x="transgenic_line", data=all_data, palette="Set2",
-                           order=all_data['transgenic_line'].value_counts().index)
+        ax = sns.countplot(x="transgenic_line", data=transgenic_data, palette="Set2",
+                           order=transgenic_data['transgenic_line'].value_counts().index)
         for container in ax.containers:
             ax.bar_label(container)
         plt.xticks(rotation=30)
@@ -118,11 +94,9 @@ def main():
     plotter = Plotter()
     plotter.plot_stimulation_and_response()
     plotter.plot_excitatory_inhibitory_distribution()
-    plotter.plot_transcriptomatic_distribution()
-    plotter.plot_merged_gene_distribution()
+    plotter.plot_transgenic_targeting()
     plt.show()
 
 
 if __name__ == '__main__':
     main()
-
