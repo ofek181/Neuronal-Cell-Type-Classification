@@ -1,16 +1,17 @@
 import os
 import random
+import shap
 import pandas as pd
 import numpy as np
 import tensorflow as tf
+import matplotlib.pyplot as plt
+import seaborn as sns
 from keras.models import Sequential
 from keras.layers import Dense, Dropout, BatchNormalization
 from keras.optimizers import Adam, SGD, RMSprop
 from keras.utils import to_categorical
 from keras.regularizers import l2
 from sklearn.model_selection import train_test_split
-import matplotlib.pyplot as plt
-import seaborn as sns
 from sklearn.preprocessing import StandardScaler
 from sklearn.metrics import confusion_matrix
 from classifier import Model
@@ -19,18 +20,12 @@ from gpu_check import get_device
 
 # get directories
 dir_path = os.path.dirname(os.path.realpath(__file__))
-dataframe_name = 'extracted_mean_ephys_data.csv'
-dataframe_path_mouse = dir_path + '/data/dataframe/mouse'
-dataframe_path_human = dir_path + '/data/dataframe/human'
-data_mouse = pd.read_csv(dataframe_path_mouse + '/' + dataframe_name)
-data_human = pd.read_csv(dataframe_path_human + '/' + dataframe_name)
-dir_path = os.path.dirname(os.path.realpath(__file__))
-results_mouse = dir_path + '/results/MLP/mouse'
-results_human = dir_path + '/results/MLP/human'
-
-
-os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
-n_classes = 2
+results_path = dir_path + '/results/neural_net'
+model_path = results_path + '/results/neural_net/model'
+data_mouse = pd.read_csv(dir_path + '/data/mouse/ephys_data.csv')
+data_human = pd.read_csv(dir_path + '/data/human/ephys_data.csv')
+results_mouse = dir_path + 'results/neural_net/mouse/dendrite_type'
+results_human = dir_path + 'results/neural_net/human'
 
 # Cancel randomness for reproducibility
 os.environ['PYTHONHASHSEED'] = '0'
@@ -39,13 +34,14 @@ np.random.seed(1)
 random.seed(1)
 
 
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 callbacks = [tf.keras.callbacks.EarlyStopping(patience=10, restore_best_weights=True)]
 
 
 class DNNClassifier(Model):
     def __init__(self, db: pd.DataFrame, n_layers: int, weight_decay: float, dense_size: list,
                  activation_function: list, learning_rate: float, drop_rate: list,
-                 batch_size: int,  n_epochs: int, optimizer: str = 'adam') -> None:
+                 batch_size: int,  n_epochs: int, optimizer: str = 'adam', n_classes: int = 2) -> None:
         """
         :param db: dataframe for training and testing.
         :param n_layers: number of layer in the model.
@@ -57,12 +53,14 @@ class DNNClassifier(Model):
         :param batch_size: batch size during training and testing.
         :param n_epochs: number of epochs during training.
         :param optimizer: optimizer used (adam, sgd or rmsprop).
+        :param n_classes: number of classes for the task.
         """
         self.wd = weight_decay
         self.lr = learning_rate
         self.dr = drop_rate
         self.af = activation_function
         self.opt = optimizer
+        self.n_classes = n_classes
         db = self.preprocess_data(db)
         super(DNNClassifier, self).__init__(data=db, num_layers=n_layers, num_neurons=dense_size,
                                             batch_size=batch_size, n_epochs=n_epochs)
@@ -77,7 +75,7 @@ class DNNClassifier(Model):
             model.add(Dense(self._num_nodes[i], activation=self.af[i],
                             kernel_regularizer=l2(self.wd), bias_regularizer=l2(self.wd)))
             model.add(Dropout(self.dr[i]))
-        model.add(Dense(n_classes, activation='softmax'))
+        model.add(Dense(self.n_classes, activation='softmax'))
         return model
 
     def train_and_test(self) -> tuple:
@@ -142,16 +140,15 @@ class DNNClassifier(Model):
         """
         db = df.dropna(axis=1, how='all')
         db = db.dropna(axis=0)
-        irrelevant_columns = ['layer', 'structure_area_abbrev', 'sampling_rate', 'mean_clipped', 'file_name',
-                              'mean_threshold_index', 'mean_peak_index', 'mean_trough_index', 'mean_upstroke_index',
-                              'mean_downstroke_index', 'mean_fast_trough_index']
-        db = db.drop([x for x in irrelevant_columns if x in df.columns], axis=1)
+        irrelevant_columns = ['transgenic_line', 'neurotransmitter', 'reporter_status', 'layer',
+                              'clipped', 'file_name', 'threshold_index', 'peak_index', 'trough_index',
+                              'upstroke_index', 'downstroke_index', 'fast_trough_index']
+        db = db.drop([x for x in irrelevant_columns if x in df.columns], axis=1, errors='ignore')
         db['dendrite_type'] = pd.Categorical(db['dendrite_type'])
         db['dendrite_type'] = db['dendrite_type'].cat.codes
         return db
 
-    @staticmethod
-    def split_train_val_test(data: pd.DataFrame) -> tuple:
+    def split_train_val_test(self, data: pd.DataFrame) -> tuple:
         """
         :param data: processed dataset.
         :return: data split into train, val and test.
@@ -159,7 +156,7 @@ class DNNClassifier(Model):
         scaler = StandardScaler()
         y = data.pop('dendrite_type')
         y = y.values.astype(np.float32)
-        y = to_categorical(y, num_classes=n_classes)
+        y = to_categorical(y, num_classes=self.n_classes)
         x = data.values.astype(np.float32)
         x = scaler.fit_transform(x)
         x_train, x_val, y_train, y_val = train_test_split(x, y, train_size=0.85, random_state=42)
@@ -186,6 +183,58 @@ class DNNClassifier(Model):
         pass
 
 
+class NeuralShap:
+    """
+    Explainer uses Shapley Values in order to explain feature importance in a model.
+    """
+    def __init__(self, title: str = None, data: pd.DataFrame = None, model: str = None) -> None:
+        """
+        :param title: name of the model.
+        :param data: type of data to be processed.
+        """
+        self.model = tf.keras.models.load_model(filepath=model)
+        self.title = title
+        self.data = data
+
+    def explain_model(self) -> None:
+        """
+        :return: shap.summary_plot for a multi-output model.
+        """
+        # use a dummy classifier to preprocess the data
+        dummy = DNNClassifier(db=self.data, n_layers=0, weight_decay=0, dense_size=[], activation_function=[],
+                              learning_rate=0, drop_rate=[], batch_size=0, n_epochs=0, optimizer='adam')
+        data = dummy.preprocess_data(self.data)
+
+        # get features' names
+        features = list(data.columns)
+        features.remove('dendrite_type')
+
+        # split into train, val and test
+        x_train, y_train, x_val, y_val, x_test, y_test = dummy.split_train_val_test(data)
+
+        # use the kernel explainer to get the Shapley values
+        kernel_explainer = shap.KernelExplainer(self.model, x_test)
+        shapley_values = kernel_explainer.shap_values(x_test)
+
+        # draw summary plot
+        self._draw_summary_plot(shapley_values, x_test, features)
+
+    def _draw_summary_plot(self, shapley_values: list, data: np.ndarray,
+                           features: list, size: tuple = (10, 10)) -> None:
+        """
+        :param shapley_values: shap values obtained from the explainer.
+        :param data: data that was tested.
+        :param features: features' names
+        :param size: size of the plot
+        """
+        plt.figure()
+        shap.summary_plot(shap_values=shapley_values, features=data, feature_names=features, plot_size=size,
+                          show=False, color=plt.get_cmap("Pastel1"), class_names=["aspiny", "spiny"])
+        plt.title(self.title)
+        plt.tight_layout()
+        plt.draw()
+
+
 def train(data: pd.DataFrame) -> DNNClassifier:
     """
     :param data: data to be trained on
@@ -203,37 +252,44 @@ def main():
     print("==============================================")
     print("Mouse training:")
     dnnclf = train(data_mouse)
-    # test human data on trained mouse network
+    # feed human data to a network that is trained on mouse data
     print("==============================================")
     print("Human test on mouse network:")
     human_test = dnnclf.preprocess_data(data_human)
     scaler = StandardScaler()
     y = human_test.pop('dendrite_type')
     y = y.values.astype(np.float32)
-    y = to_categorical(y, num_classes=n_classes)
+    y = to_categorical(y, num_classes=2)
     x = human_test.values.astype(np.float32)
     x = scaler.fit_transform(x)
     accuracy_h, f1_h, precision_h, recall_h, roc_auc_h = dnnclf.test(x, y)
-    dnnclf.model.save(filepath=results_mouse+'/model')
+    dnnclf.model.save(filepath=results_mouse + '/model')
 
     # train on human data
     print("==============================================")
     print("Human training:")
     dnnclf = train(data_human)
-    # test human data on trained mouse network
+    # feed mouse data to a network that is trained on human data
     print("==============================================")
     print("Mouse test on human network:")
     mouse_test = dnnclf.preprocess_data(data_mouse)
     scaler = StandardScaler()
     y = mouse_test.pop('dendrite_type')
     y = y.values.astype(np.float32)
-    y = to_categorical(y, num_classes=n_classes)
+    y = to_categorical(y, num_classes=2)
     x = mouse_test.values.astype(np.float32)
     x = scaler.fit_transform(x)
     accuracy_m, f1_m, precision_m, recall_m, roc_auc_m = dnnclf.test(x, y)
-    dnnclf.model.save(filepath=results_human+'/model')
+    dnnclf.model.save(filepath=results_human + '/model')
 
-    dnnclf.model.summary()
+    # Explain model using SHAP
+    models = ['Human Feature Importance', 'Mouse Feature Importance']
+    data = [data_human, data_mouse]
+    model_paths = [results_human+'/model', results_mouse+'/model']
+    for idx, val in enumerate(models):
+        xai = NeuralShap(title=val, data=data[idx], model=model_paths[idx])
+        xai.explain_model()
+
     plt.show()
 
 

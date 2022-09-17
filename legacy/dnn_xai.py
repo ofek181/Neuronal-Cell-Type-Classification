@@ -1,7 +1,7 @@
 import os
 import pandas as pd
 import numpy as np
-from dnn import DNNClassifier
+from neural_net_dendrite_type import DNNClassifier
 from gpu_check import get_device
 import shap
 import tensorflow as tf
@@ -84,3 +84,5 @@ if __name__ == '__main__':
     device = get_device()
     with tf.device(device):
         main()
+
+    # TODO optimize
