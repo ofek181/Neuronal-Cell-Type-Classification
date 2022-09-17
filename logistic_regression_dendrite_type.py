@@ -6,16 +6,27 @@ from sklearn.preprocessing import StandardScaler
 from classifier import Model
 from helper_functions import calculate_metrics
 
+# get directories
+dir_path = os.path.dirname(os.path.realpath(__file__))
+data_mouse = pd.read_csv(dir_path + '/data/mouse/ephys_data.csv')
+data_human = pd.read_csv(dir_path + '/data/human/ephys_data.csv')
+results_path = dir_path + '/results/logistic_regression'
+
 
 class LogisticClassifier(Model):
+    """
+    classify dendrite types using Logistic Regression.
+    """
     def __init__(self, db: pd.DataFrame) -> None:
         """
         :param db: cell ephys features dataframe.
         """
         db = db.dropna(axis=1, how='all')
         db = db.dropna(axis=0)
-        irrelevant_columns = ['layer', 'structure_area_abbrev', 'sampling_rate', 'mean_clipped', 'file_name']
-        db = db.drop([x for x in irrelevant_columns if x in db.columns], axis=1)
+        irrelevant_columns = ['transgenic_line', 'neurotransmitter', 'reporter_status', 'layer',
+                              'clipped', 'file_name', 'threshold_index', 'peak_index', 'trough_index',
+                              'upstroke_index', 'downstroke_index', 'fast_trough_index']
+        db = db.drop([x for x in irrelevant_columns if x in db.columns], axis=1, errors='ignore')
         super(LogisticClassifier, self).__init__(db)
 
     def _create_model(self) -> LogisticRegression:
@@ -69,15 +80,13 @@ class LogisticClassifier(Model):
         results.to_csv(os.path.join(path, name))
 
 
+def main():
+    logistic_regression = LogisticClassifier(data_mouse)
+    res = logistic_regression.train_and_test()
+    LogisticClassifier.save_results(res, results_path, 'logistic_regression.csv')
+
+
 if __name__ == '__main__':
-    dir_path = os.path.dirname(os.path.realpath(__file__))
-    dataframe_path = dir_path + '\\data\\dataframe'
-    dataframe_name = 'extracted_mean_ephys_data.csv'
-    data = pd.read_csv(dataframe_path + '\\' + dataframe_name)
-    lrclf = LogisticClassifier(data)
-    lr_results = lrclf.train_and_test()
-    results_path = dir_path + '\\results\\logistic_regression'
-    model_name = 'logistic_regression.csv'
-    LogisticClassifier.save_results(lr_results, results_path, model_name)
+    main()
 
 
