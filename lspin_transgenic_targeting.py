@@ -1,20 +1,16 @@
 import os
-import keras
+import optuna
 import numpy as np
 import pandas as pd
 import seaborn as sns
 import matplotlib.pyplot as plt
 import tensorflow as tf
-import tensorflow.compat.v1 as tf1
-import optuna
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import accuracy_score, confusion_matrix
 from sklearn.preprocessing import StandardScaler
 from tensorflow.keras.utils import to_categorical
-
-import lspin
-from lspin import Model
-from lspin import DataSet_meta
+from lspin_model import Model
+from lspin_model import DataSet_meta
 from gpu_check import get_device
 import warnings
 warnings.filterwarnings('ignore')
@@ -22,16 +18,16 @@ warnings.filterwarnings('ignore')
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 tf.get_logger().setLevel('INFO')
 
-dir_path = os.path.abspath('')
-inhibitory = dir_path + '/data/dataframe/mouse/inhibitory_transgenic_data.csv'
-excitatory = dir_path + '/data/dataframe/mouse/excitatory_transgenic_data.csv'
-data_inhibitory = pd.read_csv(inhibitory)
-data_excitatory = pd.read_csv(excitatory)
-data_all = pd.read_csv(dir_path + '/data/dataframe/mouse/transcriptomic_taxonomy.csv')
+# get directories
+dir_path = os.path.dirname(os.path.realpath(__file__))
+transgenic_data = pd.read_csv(dir_path + '/data/mouse/ephys_data.csv')
 results_path = dir_path + '/results/lspin'
 
 
 class LocallySparse:
+    """
+    uses the LSPIN model to classify transgenic targeting in mouse data.
+    """
     def __init__(self, data: pd.DataFrame, n_classes: int) -> None:
         """
         :param data: raw dataframe of neuronal recordings.
@@ -51,9 +47,9 @@ class LocallySparse:
         """
         db = self.data.dropna(axis=1, how='all')
         db = db.dropna(axis=0)
-        irrelevant_columns = ['dendrite_type', 'layer', 'mean_clipped', 'file_name', 'mean_threshold_index',
-                              'mean_peak_index', 'mean_trough_index', 'mean_upstroke_index', 'mean_downstroke_index',
-                              'mean_fast_trough_index']
+        irrelevant_columns = ['dendrite_type', 'neurotransmitter', 'reporter_status', 'layer',
+                              'clipped', 'file_name', 'threshold_index', 'peak_index', 'trough_index',
+                              'upstroke_index', 'downstroke_index', 'fast_trough_index']
         db = db.drop([x for x in irrelevant_columns if x in db.columns], axis=1)
         db['transgenic_line'] = pd.Categorical(db['transgenic_line'])
         self.class_names = dict(enumerate(db['transgenic_line'].cat.categories))
@@ -95,16 +91,6 @@ class LocallySparse:
         :param trial: a process of evaluating an objective function using optuna.
         :return: accuracy for the trial.
         """
-        # self.model_params['hidden_layers_node'] = trial.suggest_categorical("hidden_layers_node",
-        #                                                                     [[512, 512, 128, 64, 32],
-        #                                                                      [256, 256, 256, 256, 256],
-        #                                                                      [128, 128, 128, 128, 128],
-        #                                                                      [512, 512, 512, 512],
-        #                                                                      [128, 128, 128, 128],
-        #                                                                      [64, 64, 64, 64],
-        #                                                                      [64, 64, 64],
-        #                                                                      [32, 32, 32],
-        #                                                                      [32, 16, 16]])
         self.model_params['hidden_layers_node'] = trial.suggest_categorical("hidden_layers_node",
                                                                             [[100, 100, 100, 100],
                                                                              [64, 64, 64, 64],
@@ -175,7 +161,6 @@ class LocallySparse:
         # plot the gate feature selection matrix
         gate_matrix = []
         test_labels = np.argmax(self.y_test, axis=1)
-
         for i in range(self.n_classes):
             label_data = np.empty((0, self.x_test.shape[1]))
             for j in range(self.x_test.shape[0]):
@@ -193,6 +178,10 @@ class LocallySparse:
         y_true = np.argmax(self.y_test, axis=1)
 
         def reverse_labels(tup: tuple) -> list:
+            """
+            :param tup: tuple of label.
+            :return: names of labels.
+            """
             return [self.class_names[x] for x in tup]
 
         y_true_labeled, y_pred_labeled = reverse_labels(tuple(y_true)), reverse_labels(tuple(y_pred))
@@ -217,9 +206,9 @@ class LocallySparse:
 
 
 def main():
-    clf = LocallySparse(data=data_all, n_classes=5)
+    clf = LocallySparse(data=transgenic_data, n_classes=5)
     clf.create_model(display_step=2000, feature_selection=True)
-    clf.optimize(n_trials=5000)
+    clf.optimize(n_trials=10000)
     clf.get_results()
     clf.save_model()
 
