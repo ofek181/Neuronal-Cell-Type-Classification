@@ -405,7 +405,7 @@ def run_best_model() -> None:
         dummy.plot_matrix(y_pred, y_true, tests[idx])
 
 
-class Explainer:
+class DannShap:
     """
     Explainer uses Shapley Values in order to explain feature importance in a model.
     """
@@ -472,7 +472,7 @@ class Explainer:
 
 def main():
     run_best_model()
-    model = Explainer()
+    model = DannShap()
     model.explain_model()
     plt.show()
 
