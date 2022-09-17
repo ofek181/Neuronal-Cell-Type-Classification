@@ -100,6 +100,8 @@ plt.show()
 print(model.predict(x_test))
 print(y_test)
 
+# TODO optimize
+
 
 
 
