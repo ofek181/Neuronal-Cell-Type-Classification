@@ -29,13 +29,13 @@ results_human = dir_path + 'results/neural_net/human'
 
 # Cancel randomness for reproducibility
 os.environ['PYTHONHASHSEED'] = '0'
-tf.random.set_seed(1)
-np.random.seed(1)
-random.seed(1)
+tf.random.set_seed(42)
+np.random.seed(42)
+random.seed(42)
 
 
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
-callbacks = [tf.keras.callbacks.EarlyStopping(patience=10, restore_best_weights=True)]
+callbacks = [tf.keras.callbacks.EarlyStopping(patience=15, restore_best_weights=True)]
 
 
 class DNNClassifier(Model):
@@ -140,9 +140,7 @@ class DNNClassifier(Model):
         """
         db = df.dropna(axis=1, how='all')
         db = db.dropna(axis=0)
-        irrelevant_columns = ['transgenic_line', 'neurotransmitter', 'reporter_status', 'layer',
-                              'clipped', 'file_name', 'threshold_index', 'peak_index', 'trough_index',
-                              'upstroke_index', 'downstroke_index', 'fast_trough_index']
+        irrelevant_columns = ['transgenic_line', 'neurotransmitter', 'reporter_status', 'layer', 'file_name']
         db = db.drop([x for x in irrelevant_columns if x in df.columns], axis=1, errors='ignore')
         db['dendrite_type'] = pd.Categorical(db['dendrite_type'])
         db['dendrite_type'] = db['dendrite_type'].cat.codes
@@ -159,8 +157,8 @@ class DNNClassifier(Model):
         y = to_categorical(y, num_classes=self.n_classes)
         x = data.values.astype(np.float32)
         x = scaler.fit_transform(x)
-        x_train, x_val, y_train, y_val = train_test_split(x, y, train_size=0.85, random_state=42)
-        x_train, x_test, y_train, y_test = train_test_split(x_train, y_train, train_size=0.7, random_state=42)
+        x_train, x_val, y_train, y_val = train_test_split(x, y, train_size=0.8, random_state=42)
+        x_train, x_test, y_train, y_test = train_test_split(x_train, y_train, train_size=0.8, random_state=42)
         return x_train, y_train, x_val, y_val, x_test, y_test
 
     @staticmethod
@@ -240,9 +238,9 @@ def train(data: pd.DataFrame) -> DNNClassifier:
     :param data: data to be trained on
     :return: a trained DNNClassifier model
     """
-    clf = DNNClassifier(db=data, n_layers=6, weight_decay=0.0001, dense_size=[20, 512, 256, 128, 64, 32],
-                        activation_function=['swish', 'swish', 'swish', 'swish', 'swish', 'swish'], learning_rate=0.1,
-                        drop_rate=[0.2, 0.2, 0.2, 0.2, 0.2, 0.2, 0.2], batch_size=64, n_epochs=1024, optimizer='adam')
+    clf = DNNClassifier(db=data, n_layers=6, weight_decay=0.001, dense_size=[64, 64, 32, 32, 16, 16],
+                        activation_function=['swish', 'swish', 'swish', 'swish', 'swish', 'swish'], learning_rate=0.01,
+                        drop_rate=[0.2, 0.2, 0.2, 0.2, 0.2, 0.2, 0.2], batch_size=16, n_epochs=1024, optimizer='adam')
     clf.train_and_test()
     return clf
 
