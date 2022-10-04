@@ -90,10 +90,12 @@ class Downloader:
         """
         neuron = Neuron()
         cell_db = {}
+        allensdk_ephys_feats = self.ctc.get_ephys_features()
         for ind, cell in tqdm(enumerate(self.cells)):
             cell_id = cell['id']
             data_set = self.ctc.get_ephys_data(cell_id)
             sweeps = self.ctc.get_ephys_sweeps(cell_id)
+            precalculated_ephys_features = next(item for item in allensdk_ephys_feats if item['specimen_id'] == cell_id)
             noise_sweep_number = [x['sweep_number'] for x in sweeps
                                   if x['stimulus_name'] in ['Noise 1', 'Noise 2']
                                   and x['num_spikes'] is not None
@@ -103,16 +105,34 @@ class Downloader:
 
             try:  # Make sure ephys file is not corrupted
                 sweep_data = data_set.get_sweep(noise_sweep_number[0])
-                ephys_feats = self.get_ephys_features(sweep_data)
+                calculated_ephys_feats = self.get_ephys_features(sweep_data)
             except:
                 corrupted_filename = self.ctc.get_cache_path('', 'EPHYS_DATA', cell_id)
                 os.remove(corrupted_filename)
-                data_set = self.ctc.get_ephys_data(cell_id)
+                continue
+
+            df1 = pd.DataFrame(calculated_ephys_feats, index=[0])
+            irrelevant_columns = ['threshold_index', 'clipped', 'peak_index', 'trough_index', 'upstroke_index',
+                                  'downstroke_index', 'fast_trough_index', 'adp_index', 'adp_t', 'adp_v', 'adp_i',
+                                  'slow_trough_index', 'slow_trough_t', 'slow_trough_v', 'slow_trough_i']
+            df1 = df1.drop([x for x in irrelevant_columns if x in df1.columns], axis=1, errors='ignore')
+
+            df2 = pd.DataFrame(precalculated_ephys_features, index=[0])
+            irrelevant_columns = ['electrode_0_pa', 'has_burst', 'has_delay', 'has_pause', 'id', 'rheobase_sweep_id',
+                                  'rheobase_sweep_number', 'specimen_id', 'thumbnail_sweep_id', 'adaptation'
+                                  'avg_isi', 'slow_trough_t_long_square', 'slow_trough_t_ramp',
+                                  'slow_trough_t_short_square', 'slow_trough_v_long_square', 'slow_trough_v_ramp',
+                                  'slow_trough_v_short_square']
+            df2 = df2.drop([x for x in irrelevant_columns if x in df2.columns], axis=1, errors='ignore')
+
+            ephys_feats = pd.concat([df2, df2], axis=1).to_dict(orient='list')
+            for key in ephys_feats:
+                ephys_feats[key] = ephys_feats[key][0]
 
             for sweep_num in [noise_sweep_number[0]]:
                 this_cell_id = '{}_{}'.format(cell_id, sweep_num)
                 sweep_data = data_set.get_sweep(sweep_num)
-                ephys_feats = self.get_ephys_features(sweep_data)
+                calculated_ephys_feats = self.get_ephys_features(sweep_data)
                 self.save_raw_data(sweep_data, this_cell_id)
                 if self.human:
                     cell_db[this_cell_id] = {**{'dendrite_type': cell['dendrite_type'],
@@ -128,7 +148,7 @@ class Downloader:
 
 
 if __name__ == '__main__':
-    downloader = Downloader(human=False)
-    downloader.generate_data()
     downloader = Downloader(human=True)
+    downloader.generate_data()
+    downloader = Downloader(human=False)
     downloader.generate_data()
