@@ -23,9 +23,7 @@ class LogisticClassifier(Model):
         """
         db = db.dropna(axis=1, how='all')
         db = db.dropna(axis=0)
-        irrelevant_columns = ['transgenic_line', 'neurotransmitter', 'reporter_status', 'layer',
-                              'clipped', 'file_name', 'threshold_index', 'peak_index', 'trough_index',
-                              'upstroke_index', 'downstroke_index', 'fast_trough_index']
+        irrelevant_columns = ['transgenic_line', 'neurotransmitter', 'reporter_status', 'layer', 'file_name']
         db = db.drop([x for x in irrelevant_columns if x in db.columns], axis=1, errors='ignore')
         super(LogisticClassifier, self).__init__(db)
 
@@ -81,7 +79,7 @@ class LogisticClassifier(Model):
 
 
 def main():
-    logistic_regression = LogisticClassifier(data_mouse)
+    logistic_regression = LogisticClassifier(data_human)
     res = logistic_regression.train_and_test()
     LogisticClassifier.save_results(res, results_path, 'logistic_regression.csv')
 
