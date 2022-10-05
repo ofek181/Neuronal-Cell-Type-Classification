@@ -47,10 +47,8 @@ class LocallySparse:
         """
         db = self.data.dropna(axis=1, how='all')
         db = db.dropna(axis=0)
-        irrelevant_columns = ['dendrite_type', 'neurotransmitter', 'reporter_status', 'layer',
-                              'clipped', 'file_name', 'threshold_index', 'peak_index', 'trough_index',
-                              'upstroke_index', 'downstroke_index', 'fast_trough_index']
-        db = db.drop([x for x in irrelevant_columns if x in db.columns], axis=1)
+        irrelevant_columns = ['dendrite_type', 'neurotransmitter', 'reporter_status', 'layer', 'file_name']
+        db = db.drop([x for x in irrelevant_columns if x in db.columns], axis=1, errors='ignore')
         db['transgenic_line'] = pd.Categorical(db['transgenic_line'])
         self.class_names = dict(enumerate(db['transgenic_line'].cat.categories))
         db['transgenic_line'] = db['transgenic_line'].cat.codes
@@ -92,23 +90,22 @@ class LocallySparse:
         :return: accuracy for the trial.
         """
         self.model_params['hidden_layers_node'] = trial.suggest_categorical("hidden_layers_node",
-                                                                            [[100, 100, 100, 100],
+                                                                            [[512, 256, 128, 64, 32],
+                                                                             [256, 128, 64, 32, 16],
+                                                                             [128, 128, 128, 128],
                                                                              [64, 64, 64, 64],
-                                                                             [64, 32, 32],
-                                                                             [64, 32, 16],
-                                                                             [32, 32, 32],
-                                                                             [24, 24, 24],
-                                                                             [20, 20, 20]])
+                                                                             [64, 32, 16, 8],
+                                                                             [64, 32, 16]])
         self.model_params['gating_net_hidden_layers_node'] = trial.suggest_categorical("gating_net_hidden_layers_node",
-                                                                                       [[100], [50], [100, 100],
-                                                                                        [100, 100, 100], [50, 50, 50],
+                                                                                       [[50, 50],
+                                                                                        [100, 100, 100],
                                                                                         [128, 128, 128],
                                                                                         [200, 200, 200, 200]])
         self.model_params['activation_pred'] = trial.suggest_categorical("activation_pred",
                                                                          ['relu', 'l_relu', 'sigmoid', 'tanh'])
         self.model_params['lam'] = trial.suggest_loguniform('lam', 0.001, 0.1)
         self.training_params['lr'] = trial.suggest_loguniform('learning_rate', 0.001, 0.5)
-        self.training_params['num_epoch'] = trial.suggest_categorical('num_epoch', [500, 1000, 1500])
+        self.training_params['num_epoch'] = trial.suggest_categorical('num_epoch', [500, 1000, 2000])
 
         self.model = Model(**self.model_params)
         _, _, _, _ = self.model.train(dataset=self._create_metadata(), **self.training_params)
