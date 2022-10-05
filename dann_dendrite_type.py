@@ -235,9 +235,7 @@ class DANNClassifier(Model, ABC):
         """
         db = df.dropna(axis=1, how='all')
         db = db.dropna(axis=0)
-        irrelevant_columns = ['transgenic_line', 'neurotransmitter', 'reporter_status', 'layer',
-                              'clipped', 'file_name', 'threshold_index','peak_index', 'trough_index',
-                              'upstroke_index', 'downstroke_index', 'fast_trough_index']
+        irrelevant_columns = ['transgenic_line', 'neurotransmitter', 'reporter_status', 'layer', 'file_name']
         db = db.drop([x for x in irrelevant_columns if x in df.columns], axis=1, errors='ignore')
         db['dendrite_type'] = pd.Categorical(db['dendrite_type'])
         db['dendrite_type'] = db['dendrite_type'].cat.codes
@@ -300,13 +298,12 @@ def grid_search() -> bool:
     results = pd.DataFrame(columns=column_names)
     # Hyperparameter grid search
     wds = [0.0001, 0.001, 0.01]
-    # dense_sizes = [[512, 256, 128, 64, 32], [32, 64, 64, 32], [256, 128, 64, 32, 16], [256, 128, 64]]
-    dense_sizes = [[20, 10, 5], [32, 16, 8, 4], [128, 64, 32, 16]]
+    dense_sizes = [[128, 128, 64, 32, 16], [64, 64, 32, 32], [256, 256, 128, 64, 32], [256, 128, 64]]
     afs = [['selu', 'selu', 'selu', 'selu', 'selu'], ['swish', 'swish', 'swish', 'swish', 'swish']]
-    lrs = [0.1, 0.01, 0.001, 0.0001, 0.00001]
+    lrs = [0.01, 0.001, 0.0001, 0.00001]
     drops = [[0.4, 0.4, 0.4, 0.4, 0.4], [0.2, 0.2, 0.2, 0.2, 0.2]]
-    batches = [64]
-    epochs = [1024]
+    batches = [32]
+    epochs = [500]
     optimizers = ['adam', 'sgd', 'rmsprop']
     lambdas = [0.3, 0.35, 0.42, 0.45, 0.5, 0.55, 0.6, 0.65, 0.7, 0.75, 0.8, 0.9, 1, 1.2, 1.5]
 
@@ -471,10 +468,11 @@ class DannShap:
 
 
 def main():
-    run_best_model()
-    model = DannShap()
-    model.explain_model()
-    plt.show()
+    grid_search()
+    # run_best_model()
+    # model = DannShap()
+    # model.explain_model()
+    # plt.show()
 
 
 if __name__ == '__main__':
