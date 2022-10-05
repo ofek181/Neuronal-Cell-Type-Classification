@@ -139,10 +139,8 @@ class DNNClassifier(Model):
         """
         db = df.dropna(axis=1, how='all')
         db = db.dropna(axis=0)
-        irrelevant_columns = ['neurotransmitter', 'reporter_status', 'dendrite_type', 'layer', 'clipped', 'file_name',
-                              'threshold_index', 'peak_index', 'trough_index', 'upstroke_index',
-                              'downstroke_index', 'fast_trough_index']
-        db = db.drop([x for x in irrelevant_columns if x in df.columns], axis=1)
+        irrelevant_columns = ['dendrite_type', 'neurotransmitter', 'reporter_status', 'layer', 'file_name']
+        db = db.drop([x for x in irrelevant_columns if x in db.columns], axis=1, errors='ignore')
         db['transgenic_line'] = pd.Categorical(db['transgenic_line'])
         self.class_names = dict(enumerate(db['transgenic_line'].cat.categories))
         db['transgenic_line'] = db['transgenic_line'].cat.codes
