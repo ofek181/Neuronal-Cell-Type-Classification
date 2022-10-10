@@ -1,0 +1,8 @@
+Trial Finished*************
+Best model's prediction architecture: [64, 32, 16]
+Best model's gating architecture: [50, 50]
+Best model's prediction activation function: l_relu
+Best model's lambda: 0.01810120941849274
+Best model's learning rate: 0.02031632712604066
+Best model's num of epochs: 1000
+Test accuracy : 0.9358288770053476
