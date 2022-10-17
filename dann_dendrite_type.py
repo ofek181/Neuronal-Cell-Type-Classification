@@ -298,12 +298,12 @@ def grid_search() -> bool:
     results = pd.DataFrame(columns=column_names)
     # Hyperparameter grid search
     wds = [0.0001, 0.001, 0.01]
-    dense_sizes = [[128, 128, 64, 32, 16], [64, 64, 32, 32], [256, 256, 128, 64, 32], [256, 128, 64]]
+    dense_sizes = [[128, 64, 32], [64, 32, 16], [64, 64, 64], [256, 128, 64, 32]]
     afs = [['selu', 'selu', 'selu', 'selu', 'selu'], ['swish', 'swish', 'swish', 'swish', 'swish']]
     lrs = [0.01, 0.001, 0.0001, 0.00001]
-    drops = [[0.4, 0.4, 0.4, 0.4, 0.4], [0.2, 0.2, 0.2, 0.2, 0.2]]
-    batches = [32]
-    epochs = [500]
+    drops = [[0.5, 0.5, 0.5, 0.5, 0.5], [0.2, 0.2, 0.2, 0.2, 0.2]]
+    batches = [64]
+    epochs = [1000]
     optimizers = ['adam', 'sgd', 'rmsprop']
     lambdas = [0.3, 0.35, 0.42, 0.45, 0.5, 0.55, 0.6, 0.65, 0.7, 0.75, 0.8, 0.9, 1, 1.2, 1.5]
 
