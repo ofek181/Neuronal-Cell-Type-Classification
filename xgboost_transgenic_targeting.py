@@ -33,9 +33,9 @@ class XGB:
 
     def train(self) -> None:
         self.model.fit(self.x_train, self.y_train)
-        self.model.get_booster().feature_names = self.feature_names
 
     def test(self) -> None:
+        self.model.get_booster().feature_names = self.feature_names
         print("XGBoost")
         print("Learning Rate: " + str(self.model.learning_rate) + ", Max Depth: " + str(self.model.max_depth) +
               ", N Estimators: " + str(self.model.n_estimators), ", Max Leaves: " + str(self.model.max_leaves))
