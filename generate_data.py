@@ -1,3 +1,5 @@
+# This file requires python=3.7 since allensdk does not support newer version of python
+
 from allensdk.core.cell_types_cache import CellTypesCache
 from allensdk.api.queries.cell_types_api import CellTypesApi
 from allensdk.ephys.ephys_extractor import EphysSweepFeatureExtractor
