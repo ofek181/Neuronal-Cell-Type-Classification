@@ -1,4 +1,5 @@
 cell_types
 .idea
 __pycache__
+.DS_Store
 data
