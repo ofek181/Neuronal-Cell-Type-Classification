@@ -20,7 +20,7 @@ from gpu_check import get_device
 # get directories
 dir_path = os.path.dirname(os.path.realpath(__file__))
 data = pd.read_csv(dir_path + '/data/mouse/ephys_data.csv')
-results_mouse = dir_path + '/results/mlp/mouse/multilabel_classification'
+results_path = dir_path + '/results/neural_net/mouse/transgenic_type'
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 
 # Cancel randomness for reproducibility
@@ -123,7 +123,7 @@ class DNNClassifier(Model):
         df_cm = pd.DataFrame(matrix, columns=np.unique(y_true_labeled), index=np.unique(y_true_labeled))
         df_cm.index.name = 'Actual'
         df_cm.columns.name = 'Predicted'
-        plt.figure()
+        plt.figure(1)
         cmap = sns.cubehelix_palette(light=0.9, as_cmap=True)
         cm_normalized = df_cm.div(df_cm.sum(axis=0), axis=1)
         sns.heatmap(cm_normalized, cbar=False, annot=True, cmap=cmap, square=True, fmt='.1%', annot_kws={'size': 10})
@@ -157,8 +157,8 @@ class DNNClassifier(Model):
         y = to_categorical(y, num_classes=self.n_classes)
         x = data.values.astype(np.float32)
         x = scaler.fit_transform(x)
-        x_train, x_val, y_train, y_val = train_test_split(x, y, train_size=0.9, random_state=42)
-        x_train, x_test, y_train, y_test = train_test_split(x_train, y_train, train_size=0.65, random_state=42)
+        x_train, x_val, y_train, y_val = train_test_split(x, y, train_size=0.8, random_state=1)
+        x_train, x_test, y_train, y_test = train_test_split(x_train, y_train, train_size=0.7, random_state=1)
         return x_train, y_train, x_val, y_val, x_test, y_test
 
     @staticmethod
@@ -167,7 +167,7 @@ class DNNClassifier(Model):
         :param history: history of the training process.
         :return: plots the training process over the number of epochs.
         """
-        plt.figure()
+        plt.figure(2)
         plt.plot(history.history['accuracy'], label='train_accuracy')
         plt.plot(history.history['val_accuracy'], label='val_accuracy')
         plt.xlabel('Epoch')
@@ -179,6 +179,36 @@ class DNNClassifier(Model):
     @staticmethod
     def save_results(results: pd.DataFrame, path: str, name: str) -> None:
         pass
+
+
+def grid_search(data: pd.DataFrame) -> DNNClassifier:
+    layers = [3, 4]
+    l2s = [0.01, 0.0001]
+    denses = [[64, 64, 64, 64, 64], [64, 32, 16, 8, 4], [64, 64, 32, 32, 16, 16]]
+    activations = [['relu', 'relu', 'relu', 'relu', 'relu']]
+    lrs = [0.01, 0.001]
+    drops = [[0.3, 0.3, 0.3, 0.3, 0.3]]
+    bss = [32]
+    epochs = [100]
+    optims = 'adam'
+    for layer in layers:
+        for l2 in l2s:
+            for dense in denses:
+                for activation in activations:
+                    for lr in lrs:
+                        for drop in drops:
+                            for bs in bss:
+                                for epoch in epochs:
+                                    for optim in optims:
+                                        clf = DNNClassifier(db=data, n_layers=layer, weight_decay=l2,
+                                                            dense_size=dense, activation_function=activation,
+                                                            learning_rate=lr, drop_rate=drop, batch_size=bs,
+                                                            n_epochs=epoch, optimizer=optim)
+                                        accuracy = clf.train_and_test()
+                                        if accuracy > 0.9:
+                                            return clf
+                                        plt.close(1)
+                                        plt.close(2)
 
 
 def train(data: pd.DataFrame) -> DNNClassifier:
@@ -194,11 +224,13 @@ def train(data: pd.DataFrame) -> DNNClassifier:
 
 
 def main():
-    # train on mouse data
-    print("==============================================")
-    print("Training:")
-    clf = train(data)
+    clf = grid_search(data)
+    clf.model.save(filepath=results_path + '/model')
     plt.show()
+    # print("==============================================")
+    # print("Training:")
+    # clf = train(data)
+    # plt.show()
 
 
 if __name__ == '__main__':

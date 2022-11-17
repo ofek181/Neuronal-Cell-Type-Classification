@@ -35,7 +35,7 @@ random.seed(42)
 
 
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
-callbacks = [tf.keras.callbacks.EarlyStopping(patience=15, restore_best_weights=True)]
+callbacks = [tf.keras.callbacks.EarlyStopping(patience=5, restore_best_weights=True)]
 
 
 class DNNClassifier(Model):
@@ -233,12 +233,40 @@ class NeuralShap:
         plt.draw()
 
 
+def grid_search(data: pd.DataFrame) -> DNNClassifier:
+    layers = [3, 5]
+    l2s = [0.01, 0.0001]
+    denses = [[64, 64, 64, 64, 64], [64, 32, 16, 8, 4], [64, 64, 32, 32, 16, 16]]
+    activations = [['relu', 'relu', 'relu', 'relu', 'relu']]
+    lrs = [0.01, 0.001]
+    drops = [[0.3, 0.3, 0.3, 0.3, 0.3]]
+    bss = [32]
+    epochs = [100]
+    optims = 'adam'
+    for layer in layers:
+        for l2 in l2s:
+            for dense in denses:
+                for activation in activations:
+                    for lr in lrs:
+                        for drop in drops:
+                            for bs in bss:
+                                for epoch in epochs:
+                                    for optim in optims:
+                                        clf = DNNClassifier(db=data, n_layers=layer, weight_decay=l2,
+                                                            dense_size=dense, activation_function=activation,
+                                                            learning_rate=lr, drop_rate=drop, batch_size=bs,
+                                                            n_epochs=epoch, optimizer=optim)
+                                        accuracy, f1, precision, recall, roc_auc = clf.train_and_test()
+                                        if accuracy > 0.9:
+                                            return clf
+
+
 def train(data: pd.DataFrame) -> DNNClassifier:
     """
     :param data: data to be trained on
     :return: a trained DNNClassifier model
     """
-    clf = DNNClassifier(db=data, n_layers=6, weight_decay=0.001, dense_size=[64, 64, 32, 32, 16, 16],
+    clf = DNNClassifier(db=data, n_layers=3, weight_decay=0.001, dense_size=[64, 64, 32, 32, 16, 16],
                         activation_function=['swish', 'swish', 'swish', 'swish', 'swish', 'swish'], learning_rate=0.01,
                         drop_rate=[0.2, 0.2, 0.2, 0.2, 0.2, 0.2, 0.2], batch_size=16, n_epochs=1024, optimizer='adam')
     clf.train_and_test()
@@ -246,49 +274,59 @@ def train(data: pd.DataFrame) -> DNNClassifier:
 
 
 def main():
-    # train on mouse data
-    print("==============================================")
-    print("Mouse training:")
-    dnnclf = train(data_mouse)
-    # feed human data to a network that is trained on mouse data
-    print("==============================================")
-    print("Human test on mouse network:")
-    human_test = dnnclf.preprocess_data(data_human)
-    scaler = StandardScaler()
-    y = human_test.pop('dendrite_type')
-    y = y.values.astype(np.float32)
-    y = to_categorical(y, num_classes=2)
-    x = human_test.values.astype(np.float32)
-    x = scaler.fit_transform(x)
-    accuracy_h, f1_h, precision_h, recall_h, roc_auc_h = dnnclf.test(x, y)
-    dnnclf.model.save(filepath=results_mouse + '/model')
-
-    # train on human data
-    print("==============================================")
-    print("Human training:")
-    dnnclf = train(data_human)
-    # feed mouse data to a network that is trained on human data
-    print("==============================================")
-    print("Mouse test on human network:")
-    mouse_test = dnnclf.preprocess_data(data_mouse)
-    scaler = StandardScaler()
-    y = mouse_test.pop('dendrite_type')
-    y = y.values.astype(np.float32)
-    y = to_categorical(y, num_classes=2)
-    x = mouse_test.values.astype(np.float32)
-    x = scaler.fit_transform(x)
-    accuracy_m, f1_m, precision_m, recall_m, roc_auc_m = dnnclf.test(x, y)
+    # dnnclf = grid_search(data_mouse)
+    # dnnclf.model.save(filepath=results_mouse + '/model')
+    # Explain model using SHAP
+    # model_path = results_mouse+'/model'
+    # xai = NeuralShap(title='Mouse Feature Importance', data=data_mouse, model=model_path)
+    # xai.explain_model()
+    # plt.show()
+    dnnclf = grid_search(data_human)
     dnnclf.model.save(filepath=results_human + '/model')
+    model_path = results_human+'/model'
+    xai = NeuralShap(title='Human Feature Importance', data=data_human, model=model_path)
+    xai.explain_model()
+    plt.show()
+
+    # print("==============================================")
+    # print("Train on mouse data:")
+    # dnnclf = train(data_mouse)
+    # print("==============================================")
+    # print("Human test on mouse network:")
+    # human_test = dnnclf.preprocess_data(data_human)
+    # scaler = StandardScaler()
+    # y = human_test.pop('dendrite_type')
+    # y = y.values.astype(np.float32)
+    # y = to_categorical(y, num_classes=2)
+    # x = human_test.values.astype(np.float32)
+    # x = scaler.fit_transform(x)
+    # accuracy_h, f1_h, precision_h, recall_h, roc_auc_h = dnnclf.test(x, y)
+    # dnnclf.model.save(filepath=results_mouse + '/model')
+
+    # print("==============================================")
+    # print("Training on human data:")
+    # dnnclf = train(data_human)
+    # print("==============================================")
+    # print("Mouse test on human network:")
+    # mouse_test = dnnclf.preprocess_data(data_mouse)
+    # scaler = StandardScaler()
+    # y = mouse_test.pop('dendrite_type')
+    # y = y.values.astype(np.float32)
+    # y = to_categorical(y, num_classes=2)
+    # x = mouse_test.values.astype(np.float32)
+    # x = scaler.fit_transform(x)
+    # accuracy_m, f1_m, precision_m, recall_m, roc_auc_m = dnnclf.test(x, y)
+    # dnnclf.model.save(filepath=results_human + '/model')
 
     # Explain model using SHAP
-    models = ['Human Feature Importance', 'Mouse Feature Importance']
-    data = [data_human, data_mouse]
-    model_paths = [results_human+'/model', results_mouse+'/model']
-    for idx, val in enumerate(models):
-        xai = NeuralShap(title=val, data=data[idx], model=model_paths[idx])
-        xai.explain_model()
-
-    plt.show()
+    # models = ['Human Feature Importance', 'Mouse Feature Importance']
+    # data = [data_human, data_mouse]
+    # model_paths = [results_human+'/model', results_mouse+'/model']
+    # for idx, val in enumerate(models):
+    #     xai = NeuralShap(title=val, data=data[idx], model=model_paths[idx])
+    #     xai.explain_model()
+    #
+    # plt.show()
 
 
 if __name__ == '__main__':
