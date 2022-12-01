@@ -53,9 +53,8 @@ class Downloader:
         :return: saves data to path in pkl and csv formats.
         """
         df = pd.DataFrame(data=ephys_data).transpose()
-        df['layer'] = df['layer'].replace(['6a', '6b'], 6)
-        df['layer'] = df['layer'].replace('2/3', 2)
-        df['layer'] = df['layer'].astype('int')
+        df['layer'] = df['layer'].replace({'1': 'L1', '2': 'L2', '3': 'L3', '2/3': 'L2/L3',
+                                           '4': 'L4', '5': 'L5','6': 'L6', '6a': 'L6b', '6b': 'L6a'})
         df = df[df['dendrite_type'].isin(['spiny', 'aspiny'])]
         df['file_name'] = df.index
         if self.human:
@@ -127,14 +126,13 @@ class Downloader:
                                   'slow_trough_v_short_square']
             df2 = df2.drop([x for x in irrelevant_columns if x in df2.columns], axis=1, errors='ignore')
 
-            ephys_feats = pd.concat([df2, df2], axis=1).to_dict(orient='list')
+            ephys_feats = pd.concat([df1, df2], axis=1).to_dict(orient='list')
             for key in ephys_feats:
                 ephys_feats[key] = ephys_feats[key][0]
 
             for sweep_num in [noise_sweep_number[0]]:
                 this_cell_id = '{}_{}'.format(cell_id, sweep_num)
                 sweep_data = data_set.get_sweep(sweep_num)
-                calculated_ephys_feats = self.get_ephys_features(sweep_data)
                 self.save_raw_data(sweep_data, this_cell_id)
                 if self.human:
                     cell_db[this_cell_id] = {**{'dendrite_type': cell['dendrite_type'],
@@ -146,11 +144,12 @@ class Downloader:
                                                     'reporter_status':  cell['reporter_status'],
                                                     'dendrite_type':    cell['dendrite_type'],
                                                     'layer':            cell['structure_layer_name']}, **ephys_feats}
+                self.save_ephys_data(cell_db)
         self.save_ephys_data(cell_db)
 
 
 if __name__ == '__main__':
     downloader = Downloader(human=True)
     downloader.generate_data()
-    downloader = Downloader(human=False)
-    downloader.generate_data()
+    # downloader = Downloader(human=False)
+    # downloader.generate_data()
