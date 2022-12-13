@@ -144,12 +144,11 @@ class Downloader:
                                                     'reporter_status':  cell['reporter_status'],
                                                     'dendrite_type':    cell['dendrite_type'],
                                                     'layer':            cell['structure_layer_name']}, **ephys_feats}
-                self.save_ephys_data(cell_db)
         self.save_ephys_data(cell_db)
 
 
 if __name__ == '__main__':
     downloader = Downloader(human=True)
     downloader.generate_data()
-    # downloader = Downloader(human=False)
-    # downloader.generate_data()
+    downloader = Downloader(human=False)
+    downloader.generate_data()
