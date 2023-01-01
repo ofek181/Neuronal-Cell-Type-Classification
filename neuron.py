@@ -81,7 +81,7 @@ class Neuron:
         except KeyError:
             return False
 
-    def get_cell_transgenic_line(self, cell: dict) -> bool:
+    def get_cell_transgenic_line(self, cell: dict) -> str:
         """
         :param cell: metadata about the cell
         :return: transgenic line metaclass type
@@ -89,7 +89,7 @@ class Neuron:
         try:
             return self.transgenic_line[cell['transgenic_line']]
         except KeyError:
-            return False
+            return ''
 
     def validate(self, cell: dict) -> bool:
         """
