@@ -66,15 +66,15 @@ class Downloader:
                 return
         else:
             if neuron_type == 'Glutamatergic':
-                path = path_single_spike_human + '/glutamatergic'
+                path = path_single_spike_mouse + '/glutamatergic'
             elif neuron_type == 'Htr3a+|Vip-':
-                path = path_single_spike_human + '/htr3a'
+                path = path_single_spike_mouse + '/htr3a'
             elif neuron_type == 'Pvalb+':
-                path = path_single_spike_human + '/pvalb'
+                path = path_single_spike_mouse + '/pvalb'
             elif neuron_type == 'Sst+':
-                path = path_single_spike_human + '/sst'
+                path = path_single_spike_mouse + '/sst'
             elif neuron_type == 'Vip+':
-                path = path_single_spike_human + '/vip'
+                path = path_single_spike_mouse + '/vip'
             else:
                 return
 
