@@ -16,6 +16,8 @@ path_human = dir_path + '/data/human'
 path_mouse = dir_path + '/data/mouse'
 path_raw_human = dir_path + '/data/raw/human'
 path_raw_mouse = dir_path + '/data/raw/mouse'
+path_single_spike_human = dir_path + '/data/single_spike/human'
+path_single_spike_mouse = dir_path + '/data/single_spike/mouse'
 sample_rate = 50000
 
 
@@ -38,29 +40,63 @@ class Downloader:
         :param cell_id: id of cell.
         :return: saves the raw data to a path.
         """
-        file = '{}/{}.npy'.format(path_raw_mouse, cell_id)
+        file_name = '{}/{}.npy'.format(path_raw_mouse, cell_id)
         if self.human:
-            file = '{}/{}.npy'.format(path_raw_human, cell_id)
+            file_name = '{}/{}.npy'.format(path_raw_human, cell_id)
         relevant_signal = range(*sweep_data['index_range'])
         stimulation_given = np.where(sweep_data['stimulus'][relevant_signal] > 0)[0]
         resample = int(sweep_data['sampling_rate'] / sample_rate)
         response = sweep_data['response'][relevant_signal][stimulation_given][::resample]
-        np.save(file, response)
+        np.save(file_name, response)
 
-    def save_ephys_data(self, ephys_data: dict) -> None:
+    def save_single_spike(self, sweep_data: dict, cell_id: str, index: tuple, neuron_type: str) -> None:
+        """
+        :param sweep_data: sweep data for cell sweep.
+        :param cell_id: id of cell.
+        :param index: tuple including (start_index, end_index)
+        :param neuron_type: type of neuron, spiny vs aspiny for human, t-type for mouse
+        :return: saves the raw data to a path.
+        """
+        if self.human:
+            if neuron_type == 'spiny':
+                path = path_single_spike_human + '/spiny'
+            elif neuron_type == 'aspiny':
+                path = path_single_spike_human + '/aspiny'
+            else:
+                return
+        else:
+            if neuron_type == 'Glutamatergic':
+                path = path_single_spike_human + '/glutamatergic'
+            elif neuron_type == 'Htr3a+|Vip-':
+                path = path_single_spike_human + '/htr3a'
+            elif neuron_type == 'Pvalb+':
+                path = path_single_spike_human + '/pvalb'
+            elif neuron_type == 'Sst+':
+                path = path_single_spike_human + '/sst'
+            elif neuron_type == 'Vip+':
+                path = path_single_spike_human + '/vip'
+            else:
+                return
+
+        file_name = '{}/{}.npy'.format(path, cell_id)
+        response = sweep_data['response'][range(*index)]
+        np.save(file_name, response)
+
+    def save_ephys_data(self, ephys_data: dict, name: str) -> None:
         """
         :param ephys_data: the cell electrophysiology data.
+        :param name: name of the file.
         :return: saves data to path in pkl and csv formats.
         """
         df = pd.DataFrame(data=ephys_data).transpose()
         df['layer'] = df['layer'].replace({'1': 'L1', '2': 'L2', '3': 'L3', '2/3': 'L2/L3',
-                                           '4': 'L4', '5': 'L5','6': 'L6', '6a': 'L6b', '6b': 'L6a'})
+                                           '4': 'L4', '5': 'L5', '6': 'L6', '6a': 'L6b', '6b': 'L6a'})
         df = df[df['dendrite_type'].isin(['spiny', 'aspiny'])]
         df['file_name'] = df.index
         if self.human:
-            df.to_csv(os.path.join(path_human, 'ephys_data.csv'), index=False)
+            df.to_csv(os.path.join(path_human, name), index=False)
         else:
-            df.to_csv(os.path.join(path_mouse, 'ephys_data.csv'), index=False)
+            df.to_csv(os.path.join(path_mouse, name), index=False)
 
     @staticmethod
     def get_ephys_features(sweep_data: dict) -> dict:
@@ -90,7 +126,7 @@ class Downloader:
         :return: creates the cell ephys db and saves data into known paths with different formats.
         """
         neuron = Neuron()
-        cell_db = {}
+        cell_db, single_spike_db = {}, {}
         allensdk_ephys_feats = self.ctc.get_ephys_features()
         for ind, cell in tqdm(enumerate(self.cells)):
             cell_id = cell['id']
@@ -101,21 +137,38 @@ class Downloader:
                                   if x['stimulus_name'] in ['Noise 1', 'Noise 2']
                                   and x['num_spikes'] is not None
                                   and x['num_spikes'] > 10]
+            short_square_sweep_number = [x['sweep_number'] for x in sweeps
+                                         if x['stimulus_name'] in ['Short Square']
+                                         and x['num_spikes'] is not None
+                                         and x['num_spikes'] == 1]
             if not noise_sweep_number:
+                continue
+
+            if not short_square_sweep_number:
                 continue
 
             try:  # Make sure ephys file is not corrupted
                 sweep_data = data_set.get_sweep(noise_sweep_number[0])
                 calculated_ephys_feats = self.get_ephys_features(sweep_data)
+                single_spike = data_set.get_sweep(short_square_sweep_number[0])
+                spike = self.get_ephys_features(single_spike)
             except:
                 corrupted_filename = self.ctc.get_cache_path('', 'EPHYS_DATA', cell_id)
                 os.remove(corrupted_filename)
                 continue
 
-            df1 = pd.DataFrame(calculated_ephys_feats, index=[0])
-            irrelevant_columns = ['threshold_index', 'clipped', 'peak_index', 'trough_index', 'upstroke_index',
-                                  'downstroke_index', 'fast_trough_index', 'adp_index', 'adp_t', 'adp_v', 'adp_i',
+            irrelevant_columns = ['threshold_index', 'clipped', 'threshold_t', 'peak_index', 'peak_t', 'trough_index',
+                                  'trough_t', 'upstroke_index', 'upstroke_t', 'downstroke_index', 'downstroke_t',
+                                  'fast_trough_index', 'fast_trough_t', 'adp_index', 'adp_t', 'adp_v', 'adp_i',
                                   'slow_trough_index', 'slow_trough_t', 'slow_trough_v', 'slow_trough_i']
+            irrelevant_columns_for_single_spike = ['threshold_i', 'peak_i', 'trough_i', 'fast_trough_i']
+            spike_features = pd.DataFrame(spike, index=[0])
+            spike_features = spike_features.drop([x for x in irrelevant_columns
+                                                 if x in spike_features.columns], axis=1, errors='ignore')
+            spike_features = spike_features.drop([x for x in irrelevant_columns_for_single_spike
+                                                 if x in spike_features.columns],
+                                                 axis=1, errors='ignore')
+            df1 = pd.DataFrame(calculated_ephys_feats, index=[0])
             df1 = df1.drop([x for x in irrelevant_columns if x in df1.columns], axis=1, errors='ignore')
 
             df2 = pd.DataFrame(precalculated_ephys_features, index=[0])
@@ -127,24 +180,44 @@ class Downloader:
             df2 = df2.drop([x for x in irrelevant_columns if x in df2.columns], axis=1, errors='ignore')
 
             ephys_feats = pd.concat([df1, df2], axis=1).to_dict(orient='list')
+            spike_features = spike_features.to_dict(orient='list')
             for key in ephys_feats:
                 ephys_feats[key] = ephys_feats[key][0]
+            for key in spike_features:
+                spike_features[key] = spike_features[key][0]
 
-            for sweep_num in [noise_sweep_number[0]]:
-                this_cell_id = '{}_{}'.format(cell_id, sweep_num)
-                sweep_data = data_set.get_sweep(sweep_num)
-                self.save_raw_data(sweep_data, this_cell_id)
-                if self.human:
-                    cell_db[this_cell_id] = {**{'dendrite_type': cell['dendrite_type'],
-                                                'layer':         cell['structure_layer_name']}, **ephys_feats}
-                else:
-                    if neuron.validate(cell):
-                        cell_db[this_cell_id] = {**{'transgenic_line':  neuron.get_cell_transgenic_line(cell),
-                                                    'neurotransmitter': neuron.get_cell_neurotransmitter(cell),
-                                                    'reporter_status':  cell['reporter_status'],
-                                                    'dendrite_type':    cell['dendrite_type'],
-                                                    'layer':            cell['structure_layer_name']}, **ephys_feats}
-        self.save_ephys_data(cell_db)
+            this_cell_id = '{}_{}'.format(cell_id, noise_sweep_number[0])
+            self.save_raw_data(sweep_data, this_cell_id)
+
+            peak_index, frequency = int(spike['peak_index']), int(single_spike['sampling_rate'])
+            # get index at 1ms before peak
+            start = int(peak_index - frequency * 0.001)
+            # get index at 2ms after peak
+            end = int(peak_index + frequency * 0.002)
+
+            if self.human:
+                cell_db[this_cell_id] = {**{'dendrite_type': cell['dendrite_type'],
+                                            'layer':         cell['structure_layer_name']}, **ephys_feats}
+                single_spike_db[this_cell_id] = {**{'dendrite_type': cell['dendrite_type'],
+                                                    'layer': cell['structure_layer_name']}, **spike_features}
+                self.save_single_spike(single_spike, this_cell_id, (start, end), cell['dendrite_type'])
+            else:
+                if neuron.validate(cell):
+                    cell_db[this_cell_id] = {**{'transgenic_line':  neuron.get_cell_transgenic_line(cell),
+                                                'neurotransmitter': neuron.get_cell_neurotransmitter(cell),
+                                                'reporter_status':  cell['reporter_status'],
+                                                'dendrite_type':    cell['dendrite_type'],
+                                                'layer':            cell['structure_layer_name']}, **ephys_feats}
+                    single_spike_db[this_cell_id] = {**{'transgenic_line': neuron.get_cell_transgenic_line(cell),
+                                                        'neurotransmitter': neuron.get_cell_neurotransmitter(cell),
+                                                        'reporter_status': cell['reporter_status'],
+                                                        'dendrite_type': cell['dendrite_type'],
+                                                        'layer': cell['structure_layer_name']}, **spike_features}
+                    self.save_single_spike(single_spike, this_cell_id, (start, end),
+                                           neuron.get_cell_transgenic_line(cell))
+
+        self.save_ephys_data(cell_db, 'ephys_data.csv')
+        self.save_ephys_data(single_spike_db, 'single_spike_data.csv')
 
 
 if __name__ == '__main__':
