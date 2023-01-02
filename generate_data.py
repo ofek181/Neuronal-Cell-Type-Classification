@@ -34,7 +34,7 @@ class Downloader:
             self.cells = self.ctc.get_cells(species=[CellTypesApi.MOUSE])
         self.esf = EphysSweepFeatureExtractor
 
-    def save_raw_data(self, sweep_data: dict, cell_id: str) -> None:
+    def save_raw_noise_data(self, sweep_data: dict, cell_id: str) -> None:
         """
         :param sweep_data: sweep data for cell sweep.
         :param cell_id: id of cell.
@@ -164,9 +164,9 @@ class Downloader:
             irrelevant_columns_for_single_spike = ['threshold_i', 'peak_i', 'trough_i', 'fast_trough_i']
             spike_features = pd.DataFrame(spike, index=[0])
             spike_features = spike_features.drop([x for x in irrelevant_columns
-                                                 if x in spike_features.columns], axis=1, errors='ignore')
+                                                  if x in spike_features.columns], axis=1, errors='ignore')
             spike_features = spike_features.drop([x for x in irrelevant_columns_for_single_spike
-                                                 if x in spike_features.columns],
+                                                  if x in spike_features.columns],
                                                  axis=1, errors='ignore')
             df1 = pd.DataFrame(calculated_ephys_feats, index=[0])
             df1 = df1.drop([x for x in irrelevant_columns if x in df1.columns], axis=1, errors='ignore')
@@ -174,7 +174,8 @@ class Downloader:
             df2 = pd.DataFrame(precalculated_ephys_features, index=[0])
             irrelevant_columns = ['electrode_0_pa', 'has_burst', 'has_delay', 'has_pause', 'id', 'rheobase_sweep_id',
                                   'rheobase_sweep_number', 'specimen_id', 'thumbnail_sweep_id', 'adaptation'
-                                  'avg_isi', 'slow_trough_t_long_square', 'slow_trough_t_ramp',
+                                                                                                'avg_isi',
+                                  'slow_trough_t_long_square', 'slow_trough_t_ramp',
                                   'slow_trough_t_short_square', 'slow_trough_v_long_square', 'slow_trough_v_ramp',
                                   'slow_trough_v_short_square']
             df2 = df2.drop([x for x in irrelevant_columns if x in df2.columns], axis=1, errors='ignore')
@@ -186,35 +187,41 @@ class Downloader:
             for key in spike_features:
                 spike_features[key] = spike_features[key][0]
 
-            this_cell_id = '{}_{}'.format(cell_id, noise_sweep_number[0])
-            self.save_raw_data(sweep_data, this_cell_id)
+            noise_id = '{}_{}'.format(cell_id, noise_sweep_number[0])
+            square_id = '{}_{}'.format(cell_id, short_square_sweep_number[0])
 
             peak_index, frequency = int(spike['peak_index']), int(single_spike['sampling_rate'])
             # get index at 1ms before peak
             start = int(peak_index - frequency * 0.001)
             # get index at 2ms after peak
             end = int(peak_index + frequency * 0.002)
-
+            # get delay from stimulus to peak
+            stimulus_index = np.where(single_spike['stimulus'] > 100)[0][0]
+            delay = (peak_index - stimulus_index) / frequency
             if self.human:
-                cell_db[this_cell_id] = {**{'dendrite_type': cell['dendrite_type'],
-                                            'layer':         cell['structure_layer_name']}, **ephys_feats}
-                single_spike_db[this_cell_id] = {**{'dendrite_type': cell['dendrite_type'],
-                                                    'layer': cell['structure_layer_name']}, **spike_features}
-                self.save_single_spike(single_spike, this_cell_id, (start, end), cell['dendrite_type'])
+                cell_db[noise_id] = {**{'dendrite_type': cell['dendrite_type'],
+                                        'layer': cell['structure_layer_name']}, **ephys_feats}
+                single_spike_db[square_id] = {**{'dendrite_type': cell['dendrite_type'],
+                                                 'layer': cell['structure_layer_name']},
+                                                 'stimulus_to_peak_t': delay, **spike_features}
+                self.save_single_spike(single_spike, square_id, (start, end), cell['dendrite_type'])
             else:
                 if neuron.validate(cell):
-                    cell_db[this_cell_id] = {**{'transgenic_line':  neuron.get_cell_transgenic_line(cell),
-                                                'neurotransmitter': neuron.get_cell_neurotransmitter(cell),
-                                                'reporter_status':  cell['reporter_status'],
-                                                'dendrite_type':    cell['dendrite_type'],
-                                                'layer':            cell['structure_layer_name']}, **ephys_feats}
-                    single_spike_db[this_cell_id] = {**{'transgenic_line': neuron.get_cell_transgenic_line(cell),
-                                                        'neurotransmitter': neuron.get_cell_neurotransmitter(cell),
-                                                        'reporter_status': cell['reporter_status'],
-                                                        'dendrite_type': cell['dendrite_type'],
-                                                        'layer': cell['structure_layer_name']}, **spike_features}
-                    self.save_single_spike(single_spike, this_cell_id, (start, end),
+                    cell_db[noise_id] = {**{'transgenic_line': neuron.get_cell_transgenic_line(cell),
+                                            'neurotransmitter': neuron.get_cell_neurotransmitter(cell),
+                                            'reporter_status': cell['reporter_status'],
+                                            'dendrite_type': cell['dendrite_type'],
+                                            'layer': cell['structure_layer_name']}, **ephys_feats}
+                    single_spike_db[square_id] = {**{'transgenic_line': neuron.get_cell_transgenic_line(cell),
+                                                     'neurotransmitter': neuron.get_cell_neurotransmitter(cell),
+                                                     'reporter_status': cell['reporter_status'],
+                                                     'dendrite_type': cell['dendrite_type'],
+                                                     'layer': cell['structure_layer_name']},
+                                                     'stimulus_to_peak_t': delay, **spike_features}
+                    self.save_single_spike(single_spike, square_id, (start, end),
                                            neuron.get_cell_transgenic_line(cell))
+
+            self.save_raw_noise_data(sweep_data, noise_id)
 
         self.save_ephys_data(cell_db, 'ephys_data.csv')
         self.save_ephys_data(single_spike_db, 'single_spike_data.csv')
