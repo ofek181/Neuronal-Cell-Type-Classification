@@ -1,2 +1,2 @@
-model_checkpoint_path: "C:\\MSc\\thesis\\Code/results/lspin/model/model"
-all_model_checkpoint_paths: "C:\\MSc\\thesis\\Code/results/lspin/model/model"
+model_checkpoint_path: "/Users/ofekophir/Desktop/MSc/thesis/Code/results/lspin/model/model"
+all_model_checkpoint_paths: "/Users/ofekophir/Desktop/MSc/thesis/Code/results/lspin/model/model"

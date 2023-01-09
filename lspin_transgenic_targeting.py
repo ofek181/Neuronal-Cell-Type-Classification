@@ -90,21 +90,20 @@ class LocallySparse:
         :return: accuracy for the trial.
         """
         self.model_params['hidden_layers_node'] = trial.suggest_categorical("hidden_layers_node",
-                                                                            [[512, 256, 128, 64, 32],
-                                                                             [256, 128, 64, 32, 16],
-                                                                             [128, 128, 128, 128],
-                                                                             [64, 64, 64, 64],
+                                                                            [[256, 128, 64, 32, 16],
+                                                                             [128, 64, 32, 16],
                                                                              [64, 32, 16, 8],
-                                                                             [64, 32, 16]])
+                                                                             [32, 16, 8],
+                                                                             [40, 20]])
         self.model_params['gating_net_hidden_layers_node'] = trial.suggest_categorical("gating_net_hidden_layers_node",
-                                                                                       [[50, 50],
+                                                                                       [[50, 50], [100, 100],
                                                                                         [100, 100, 100],
-                                                                                        [128, 128, 128],
-                                                                                        [200, 200, 200, 200]])
+                                                                                        [200, 200, 200],
+                                                                                        [100, 100, 100, 100]])
         self.model_params['activation_pred'] = trial.suggest_categorical("activation_pred",
                                                                          ['relu', 'l_relu', 'sigmoid', 'tanh'])
-        self.model_params['lam'] = trial.suggest_loguniform('lam', 0.001, 0.1)
-        self.training_params['lr'] = trial.suggest_loguniform('learning_rate', 0.001, 0.5)
+        self.model_params['lam'] = trial.suggest_loguniform('lam', 0.001, 0.25)
+        self.training_params['lr'] = trial.suggest_loguniform('learning_rate', 0.001, 0.1)
         self.training_params['num_epoch'] = trial.suggest_categorical('num_epoch', [500, 1000, 2000])
 
         self.model = Model(**self.model_params)
@@ -204,8 +203,8 @@ class LocallySparse:
 
 def main():
     clf = LocallySparse(data=transgenic_data, n_classes=5)
-    clf.create_model(display_step=1000, feature_selection=True)
-    clf.optimize(n_trials=10000)
+    clf.create_model(display_step=2000, feature_selection=True)
+    clf.optimize(n_trials=200)
     clf.get_results()
     clf.save_model()
 
