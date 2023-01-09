@@ -186,11 +186,14 @@ class Downloader:
 
             df2 = pd.DataFrame(precalculated_ephys_features, index=[0])
             irrelevant_columns = ['electrode_0_pa', 'has_burst', 'has_delay', 'has_pause', 'id', 'rheobase_sweep_id',
-                                  'rheobase_sweep_number', 'specimen_id', 'thumbnail_sweep_id', 'adaptation'
-                                                                                                'avg_isi',
-                                  'slow_trough_t_long_square', 'slow_trough_t_ramp',
+                                  'rheobase_sweep_number', 'specimen_id', 'thumbnail_sweep_id', 'adaptation',
+                                  'avg_isi', 'slow_trough_t_long_square', 'slow_trough_t_ramp',
                                   'slow_trough_t_short_square', 'slow_trough_v_long_square', 'slow_trough_v_ramp',
-                                  'slow_trough_v_short_square']
+                                  'slow_trough_v_short_square', 'fast_trough_t_long_square', 'fast_trough_t_ramp',
+                                  'fast_trough_t_short_square', 'peak_t_long_square', 'peak_t_ramp',
+                                  'peak_t_short_square', 'threshold_t_long_square', 'threshold_t_ramp',
+                                  'threshold_t_short_square', 'trough_t_long square', 'trough_t_ramp',
+                                  'trough_t_short_square', 'trough_t_long_square']
             df2 = df2.drop([x for x in irrelevant_columns if x in df2.columns], axis=1, errors='ignore')
 
             ephys_feats = pd.concat([df1, df2], axis=1).to_dict(orient='list')
