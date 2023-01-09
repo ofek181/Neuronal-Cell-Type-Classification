@@ -58,7 +58,7 @@ class LocallySparse:
         y = to_categorical(y, num_classes=self.n_classes)
         x = db.values.astype(np.float32)
         x = scaler.fit_transform(x)
-        x_train, x_val, y_train, y_val = train_test_split(x, y, train_size=0.75, random_state=42)
+        x_train, x_val, y_train, y_val = train_test_split(x, y, train_size=0.8, random_state=42)
         x_train, x_test, y_train, y_test = train_test_split(x_train, y_train, train_size=0.8, random_state=42)
         return x_train, y_train, x_val, y_val, x_test, y_test
 
@@ -204,8 +204,8 @@ class LocallySparse:
 
 def main():
     clf = LocallySparse(data=transgenic_data, n_classes=5)
-    clf.create_model(display_step=2000, feature_selection=True)
-    clf.optimize(n_trials=5000)
+    clf.create_model(display_step=1000, feature_selection=True)
+    clf.optimize(n_trials=10000)
     clf.get_results()
     clf.save_model()
 
