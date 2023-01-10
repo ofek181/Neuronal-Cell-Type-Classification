@@ -1,7 +1,6 @@
 import random
 import keras
 import shap
-import optuna
 import os
 import numpy as np
 import pandas as pd
@@ -20,17 +19,13 @@ from sklearn.metrics import confusion_matrix
 from helper_functions import calculate_metrics
 from gpu_check import get_device
 from abc import ABC
-import warnings
-warnings.filterwarnings('ignore')
-
-global best_model, model
 
 # get directories
-filepath = os.path.dirname(os.path.realpath(__file__))
-results_path = filepath + '/results/dann'
+dir_path = os.path.dirname(os.path.realpath(__file__))
+results_path = dir_path + '/results/dann'
 model_path = results_path + '/model'
-mouse_data = pd.read_csv(filepath + '/data/mouse/ephys_data.csv')
-human_data = pd.read_csv(filepath + '/data/human/ephys_data.csv')
+mouse_data = pd.read_csv(dir_path + '/data/mouse/ephys_data.csv')
+human_data = pd.read_csv(dir_path + '/data/human/ephys_data.csv')
 mouse_data['organism'] = 0
 human_data['organism'] = 1
 
@@ -266,117 +261,20 @@ class DANNClassifier(Model, ABC):
         name = title + '.png'
         plt.savefig(fname=os.path.join(results_path, name))
 
-    def plot_history(self) -> None:
+    @staticmethod
+    def plot_history(history) -> None:
         """
         :param history: training history data
         :return: plots the training process.
         """
         plt.figure()
-        plt.plot(self.history.history['l_pred_accuracy'], label='train accuracy')
-        plt.plot(self.history.history['val_l_pred_accuracy'], label='val accuracy')
+        plt.plot(history.history['l_pred_accuracy'], label='train accuracy')
+        plt.plot(history.history['val_l_pred_accuracy'], label='val accuracy')
         plt.xlabel('Epoch')
         plt.ylabel('Accuracy')
         plt.ylim([0, 1])
         plt.legend(loc='lower right')
         plt.savefig(fname=os.path.join(results_path, 'History.png'))
-
-
-def objective(trial) -> float:
-    """
-    Wrap model training with an objective function and return accuracy.
-    Suggest hyperparameters using a trial object.
-    """
-    global model
-    wds = trial.suggest_loguniform("weight_decay", 0.0001, 1)
-    hidden_architecture = trial.suggest_categorical("hidden_architecture", ([64, 32, 16],
-                                                                            [128, 64, 32],
-                                                                            [64, 32, 16, 8],
-                                                                            [128, 64, 32, 16],
-                                                                            [256, 128, 64, 32, 16]))
-    afs = trial.suggest_categorical("activation", (['relu', 'relu', 'relu', 'relu', 'relu'],
-                                                   ['selu', 'selu', 'selu', 'selu', 'selu'],
-                                                   ['swish', 'swish', 'swish', 'swish', 'swish']))
-    lrs = trial.suggest_loguniform('learning_rate', 0.001, 0.1)
-    drops = trial.suggest_categorical("drop_rate", ([0.5, 0.5, 0.5, 0.5, 0.5],
-                                                    [0.3, 0.3, 0.3, 0.3, 0.3],
-                                                    [0.1, 0.1, 0.1, 0.1, 0.1]))
-    batches = trial.suggest_categorical("batch_size", (32, 64))
-    epochs = trial.suggest_categorical("epochs", (500, 1000, 1500, 2000))
-    optimizers = trial.suggest_categorical("optimizer", ('adam', 'sgd', 'rmsprop'))
-    lambdas = trial.suggest_loguniform('lambda', 0.1, 5)
-
-    model = DANNClassifier(db=data,
-                           weight_decay=wds,
-                           dense_size=hidden_architecture,
-                           activation_function=afs,
-                           learning_rate=lrs,
-                           drop_rate=drops,
-                           batch_size=batches,
-                           n_epochs=epochs,
-                           optimizer=optimizers,
-                           lamda=lambdas)
-
-    accuracy, f1, precision, recall, roc_auc = model.train_and_test()
-
-    # Test network on test human data
-    print('Human Test:')
-    acc_h, f1_h, precision_h, recall_h, roc_auc_h, pred_h, true_h = model.test(x_human, y_human)
-
-    # Test network on test mouse data
-    print('Mouse Test:')
-    acc_m, f1_m, precision_m, recall_m, roc_auc_m, pred_m, true_m = model.test(x_mouse, y_mouse)
-
-    print("Mouse accuracy: " + str(acc_m))
-    print("Human accuracy: " + str(acc_h))
-    return (acc_m + acc_h) / 2
-
-
-def callback(study, trial) -> None:
-    """
-    Save best model
-    """
-    global best_model, model
-    if study.best_trial == trial:
-        best_model = model
-        model.plot_history()
-
-
-def optimize(n_trials: int, n_jobs: int = 1) -> None:
-    """
-    Create a study object and execute the optimization.
-    """
-    global best_model
-
-    study = optuna.create_study(study_name='dann', direction='maximize')
-    study.optimize(func=objective, n_trials=n_trials, n_jobs=n_jobs, callbacks=[callback])
-
-    weight_decay = study.best_params['weight_decay']
-    hidden_architecture = study.best_params['hidden_architecture']
-    activation = study.best_params['activation']
-    learning_rate = study.best_params['learning_rate']
-    drop_rate = study.best_params['drop_rate']
-    batch_size = study.best_params['batch_size']
-    epochs = study.best_params['epochs']
-    optimizer = study.best_params['optimizer']
-    lamda = study.best_params['lambda']
-
-    acc_h, f1_h, precision_h, recall_h, roc_auc_h, pred_h, true_h = best_model.test(x_human, y_human)
-    acc_m, f1_m, precision_m, recall_m, roc_auc_m, pred_m, true_m = best_model.test(x_mouse, y_mouse)
-
-    print("Trial Finished*************")
-    print("Best model's accuracy for human data: {}".format(acc_h))
-    print("Best model's accuracy for mouse data: {}".format(acc_m))
-    print("Best model's weight decay: {}".format(weight_decay))
-    print("Best model's hidden architecture: {}".format(hidden_architecture))
-    print("Best model's activation function: {}".format(activation))
-    print("Best model's learning rate: {}".format(learning_rate))
-    print("Best model's drop rate: {}".format(drop_rate))
-    print("Best model's batch size: {}".format(batch_size))
-    print("Best model's n_epochs: {}".format(epochs))
-    print("Best model's optimizer: {}".format(optimizer))
-    print("Best model's lambda: {}".format(lamda))
-
-    best_model.model.save(filepath=model_path)
 
 
 def get_data() -> tuple:
@@ -387,6 +285,96 @@ def get_data() -> tuple:
     data_human, data_human_test = train_test_split(human_data, test_size=0.2, random_state=0, shuffle=False)
     data = data_mouse.append(data_human, ignore_index=True)
     return data, data_human_test, data_mouse_test
+
+
+def grid_search() -> bool:
+    """
+    :return: grid search over different hyperparameter permutations.
+    """
+    data, data_human_test, data_mouse_test = get_data()
+    column_names = ["Network Architecture", "Activation Function", "Drop Rate", "Optimizer",
+                    "N Epochs", "Weight Decay", "Learning Rate", "Batch Size", "Lambda",
+                    "Total Accuracy", "Human Accuracy", "Human F1", "Mouse Accuracy", "Mouse F1"]
+    results = pd.DataFrame(columns=column_names)
+    # Hyperparameter grid search
+    wds = [0.0001, 0.001, 0.01]
+    dense_sizes = [[128, 64, 32], [64, 32, 16], [64, 64, 64], [256, 128, 64, 32]]
+    afs = [['selu', 'selu', 'selu', 'selu', 'selu'], ['swish', 'swish', 'swish', 'swish', 'swish']]
+    lrs = [0.01, 0.001, 0.0001, 0.00001]
+    drops = [[0.5, 0.5, 0.5, 0.5, 0.5], [0.2, 0.2, 0.2, 0.2, 0.2]]
+    batches = [64]
+    epochs = [1000]
+    optimizers = ['adam', 'sgd', 'rmsprop']
+    lambdas = [0.3, 0.35, 0.42, 0.45, 0.5, 0.55, 0.6, 0.65, 0.7, 0.75, 0.8, 0.9, 1, 1.2, 1.5]
+
+    dummy = DANNClassifier(db=data, weight_decay=0, dense_size=[], activation_function=[], learning_rate=0,
+                           drop_rate=[0], batch_size=0, n_epochs=0, optimizer='adam', lamda=0)
+    x_human, y_human, x_mouse, y_mouse = dummy.get_mouse_human_split_data(data_human_test, data_mouse_test)
+
+    n_run = 0
+    for ds in dense_sizes:
+        for af in afs:
+            for drop in drops:
+                for optimizer in optimizers:
+                    for epoch in epochs:
+                        for wd in wds:
+                            for lr in lrs:
+                                for batch in batches:
+                                    for lamda in lambdas:
+                                        print("----------------------------------------------------------------")
+                                        print("Run number: " + str(n_run))
+                                        print("----------------------------------------------------------------")
+                                        print("Network architecture: {0}".format(ds))
+                                        print("Activations: {0}, Drop rates: {1}".format(af, drop))
+                                        print("Optimizer: {0}, N_epochs: {1}".format(optimizer, epoch))
+                                        print("Weight decay: {0}, Learning rate: {1}".format(wd, lr))
+                                        print("Batch size: {0}, Lambda: {1}".format(batch, lamda))
+
+                                        DANN = DANNClassifier(db=data,
+                                                              weight_decay=wd,
+                                                              dense_size=ds,
+                                                              activation_function=af,
+                                                              learning_rate=lr,
+                                                              drop_rate=drop,
+                                                              batch_size=batch,
+                                                              n_epochs=epoch,
+                                                              optimizer=optimizer,
+                                                              lamda=lamda)
+                                        l_acc, l_f1, l_precision, l_recall, l_roc_auc = DANN.train_and_test()
+
+                                        # Test network on test human data
+                                        print('Human Test:')
+                                        acc_h, f1_h, precision_h, recall_h, roc_auc_h, pred_h, true_h = DANN.test(
+                                            x_human, y_human)
+
+                                        # Test network on test mouse data
+                                        print('Mouse Test:')
+                                        acc_m, f1_m, precision_m, recall_m, roc_auc_m, pred_m, true_m = DANN.test(
+                                            x_mouse, y_mouse)
+
+                                        results.loc[n_run] = [ds, af, drop, optimizer,
+                                                              epoch, wd, lr, batch, lamda,
+                                                              l_acc, acc_h, f1_h, acc_m, f1_m]
+                                        n_run += 1
+                                        results.to_csv(os.path.join(results_path, 'DANN_results.csv'), index=True)
+
+                                        if acc_h > 0.9 and acc_m > 0.9:
+                                            print("hyper parameters found!")
+                                            print("Results are:")
+                                            print("=============================================================")
+                                            print("Network architecture: {0}".format(ds))
+                                            print("Activations: {0}, Drop rates: {1}".format(af, drop))
+                                            print("Optimizer: {0}, N_epochs: {1}".format(optimizer, epoch))
+                                            print("Weight decay: {0}, Learning rate: {1}".format(wd, lr))
+                                            print("Batch size: {0}, Lambda: {1}".format(batch, lamda))
+                                            print("=============================================================")
+                                            DANN.model.save(filepath=model_path)
+                                            print('Model Saved!')
+                                            DANN.plot_history(DANN.history)
+                                            DANN.plot_matrix(pred_m, true_m, 'Mouse dendrite type classification')
+                                            DANN.plot_matrix(pred_h, true_h, 'Human dendrite type classification')
+                                            return True
+    return False
 
 
 def run_best_model() -> None:
@@ -477,22 +465,17 @@ class DannShap:
         plt.title(title)
         plt.tight_layout()
         plt.draw()
-        plt.savefig(results_path + "/shapley.png")
 
 
 def main():
-    optimize(n_trials=10000)
-    run_best_model()
-    model = DannShap()
-    model.explain_model()
-    plt.show()
+    grid_search()
+    # run_best_model()
+    # model = DannShap()
+    # model.explain_model()
+    # plt.show()
 
 
 if __name__ == '__main__':
     device = get_device()
     with tf.device(device):
-        data, data_human_test, data_mouse_test = get_data()
-        dummy = DANNClassifier(db=data, weight_decay=0, dense_size=[], activation_function=[], learning_rate=0,
-                               drop_rate=[0], batch_size=0, n_epochs=0, optimizer='adam', lamda=0)
-        x_human, y_human, x_mouse, y_mouse = dummy.get_mouse_human_split_data(data_human_test, data_mouse_test)
         main()
