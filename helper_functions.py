@@ -15,6 +15,7 @@ def calculate_metrics(y_true: np.ndarray, y_pred: np.ndarray) -> tuple:
     roc_auc = roc_auc_score(y_true, y_pred)
     return accuracy, f1, precision, recall, roc_auc
 
+
 def calculate_metrics_multiclass(y_true: np.ndarray, y_pred: np.ndarray, y_pred_proba) -> tuple:
     """
     :param y_true: true labels provided by the dataset.
