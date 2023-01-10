@@ -1,7 +1,0 @@
-Best model's prediction architecture: [40, 20]
-Best model's gating architecture: [50, 50]
-Best model's prediction activation function: tanh
-Best model's lambda: 0.024797916843375113
-Best model's learning rate: 0.03452804724562761
-Best model's num of epochs: 2000
-Test accuracy : 0.9049773755656109
