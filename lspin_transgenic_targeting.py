@@ -17,11 +17,12 @@ warnings.filterwarnings('ignore')
 
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 tf.get_logger().setLevel('INFO')
+plt.rcParams.update({'font.size': 14})
 
 # get directories
-dir_path = os.path.dirname(os.path.realpath(__file__))
-transgenic_data = pd.read_csv(dir_path + '/data/mouse/ephys_data.csv')
-results_path = dir_path + '/results/lspin'
+filepath = os.path.dirname(os.path.realpath(__file__))
+transgenic_data = pd.read_csv(filepath + '/data/mouse/ephys_data.csv')
+results_path = filepath + '/results/lspin'
 
 
 class LocallySparse:
@@ -168,6 +169,7 @@ class LocallySparse:
             sns.heatmap(gate_matrix[i], vmin=0, vmax=1)
             plt.title("Label: {}".format(self.class_names[i]))
             plt.draw()
+            plt.savefig(results_path + "/gate_matrix_" + str(self.class_names[i]) + ".png")
 
         # plot the confusion matrix
         y_pred = self.best_model.test(self.x_test)
@@ -183,8 +185,8 @@ class LocallySparse:
         y_true_labeled, y_pred_labeled = reverse_labels(tuple(y_true)), reverse_labels(tuple(y_pred))
         matrix = confusion_matrix(y_true_labeled, y_pred_labeled)
         df_cm = pd.DataFrame(matrix, columns=np.unique(y_true_labeled), index=np.unique(y_true_labeled))
-        df_cm.index.name = 'Actual'
-        df_cm.columns.name = 'Predicted'
+        # df_cm.index.name = 'Actual'
+        # df_cm.columns.name = 'Predicted'
         plt.figure()
         cmap = sns.cubehelix_palette(light=0.9, as_cmap=True)
         cm_normalized = df_cm.div(df_cm.sum(axis=0), axis=1)
@@ -192,6 +194,7 @@ class LocallySparse:
         plt.title('LSPIN Neuron Classification')
         plt.tight_layout()
         plt.draw()
+        plt.savefig(results_path + "/lspin_results.png")
         plt.show()
 
     def save_model(self):
@@ -204,7 +207,7 @@ class LocallySparse:
 def main():
     clf = LocallySparse(data=transgenic_data, n_classes=5)
     clf.create_model(display_step=2000, feature_selection=True)
-    clf.optimize(n_trials=200)
+    clf.optimize(n_trials=1)
     clf.get_results()
     clf.save_model()
 
