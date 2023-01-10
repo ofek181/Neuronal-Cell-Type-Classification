@@ -22,6 +22,7 @@ from gpu_check import get_device
 from abc import ABC
 import warnings
 warnings.filterwarnings('ignore')
+plt.rcParams.update({'font.size': 14})
 
 global best_model, model
 
@@ -290,16 +291,18 @@ def objective(trial) -> float:
     wds = trial.suggest_loguniform("weight_decay", 0.0001, 1)
     hidden_architecture = trial.suggest_categorical("hidden_architecture", ([64, 32, 16],
                                                                             [128, 64, 32],
+                                                                            [100, 50, 25],
                                                                             [64, 32, 16, 8],
                                                                             [128, 64, 32, 16],
                                                                             [256, 128, 64, 32, 16]))
     afs = trial.suggest_categorical("activation", (['relu', 'relu', 'relu', 'relu', 'relu'],
                                                    ['selu', 'selu', 'selu', 'selu', 'selu'],
                                                    ['swish', 'swish', 'swish', 'swish', 'swish']))
-    lrs = trial.suggest_loguniform('learning_rate', 0.001, 0.1)
+    lrs = trial.suggest_loguniform('learning_rate', 0.001, 0.2)
     drops = trial.suggest_categorical("drop_rate", ([0.5, 0.5, 0.5, 0.5, 0.5],
                                                     [0.3, 0.3, 0.3, 0.3, 0.3],
-                                                    [0.1, 0.1, 0.1, 0.1, 0.1]))
+                                                    [0.1, 0.1, 0.1, 0.1, 0.1],
+                                                    [0.0, 0.0, 0.0, 0.0, 0.0]))
     batches = trial.suggest_categorical("batch_size", (32, 64))
     epochs = trial.suggest_categorical("epochs", (500, 1000, 1500, 2000))
     optimizers = trial.suggest_categorical("optimizer", ('adam', 'sgd', 'rmsprop'))
