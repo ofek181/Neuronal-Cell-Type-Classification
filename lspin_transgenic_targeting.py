@@ -6,9 +6,11 @@ import seaborn as sns
 import matplotlib.pyplot as plt
 import tensorflow as tf
 from sklearn.model_selection import train_test_split
-from sklearn.metrics import accuracy_score, confusion_matrix
+from sklearn.metrics import accuracy_score, f1_score, precision_score, recall_score, roc_auc_score, confusion_matrix
 from sklearn.preprocessing import StandardScaler
 from tensorflow.keras.utils import to_categorical
+
+import lspin_model
 from lspin_model import Model
 from lspin_model import DataSet_meta
 from gpu_check import get_device
@@ -91,21 +93,20 @@ class LocallySparse:
         :return: accuracy for the trial.
         """
         self.model_params['hidden_layers_node'] = trial.suggest_categorical("hidden_layers_node",
-                                                                            [[256, 128, 64, 32, 16],
-                                                                             [128, 64, 32, 16],
-                                                                             [64, 32, 16, 8],
-                                                                             [50, 30, 20], [32, 16, 8],
+                                                                            [[100, 50, 25, 10],
+                                                                             [50, 30, 20, 10],
+                                                                             [50, 25, 10], [32, 16, 8],
                                                                              [50, 25], [40, 20]])
         self.model_params['gating_net_hidden_layers_node'] = trial.suggest_categorical("gating_net_hidden_layers_node",
-                                                                                       [[50, 50], [100, 100],
+                                                                                       [[100, 100],
                                                                                         [100, 100, 100],
-                                                                                        [200, 200, 200],
+                                                                                        [50, 50, 50],
                                                                                         [100, 100, 100, 100]])
         self.model_params['activation_pred'] = trial.suggest_categorical("activation_pred",
                                                                          ['relu', 'l_relu', 'sigmoid', 'tanh'])
-        self.model_params['lam'] = trial.suggest_loguniform('lam', 0.001, 0.5)
-        self.training_params['lr'] = trial.suggest_loguniform('learning_rate', 0.001, 0.5)
-        self.training_params['num_epoch'] = trial.suggest_categorical('num_epoch', [500, 1000, 2000])
+        self.model_params['lam'] = trial.suggest_loguniform('lam', 0.01, 1)
+        self.training_params['lr'] = trial.suggest_loguniform('learning_rate', 0.001, 0.1)
+        self.training_params['num_epoch'] = trial.suggest_categorical('num_epoch', [500, 1000, 1500])
 
         self.model = Model(**self.model_params)
         _, _, _, _ = self.model.train(dataset=self._create_metadata(), **self.training_params)
@@ -125,7 +126,7 @@ class LocallySparse:
         if study.best_trial == trial:
             self.best_model = self.model
 
-    def optimize(self, n_trials: int, n_jobs: int = 1) -> float:
+    def optimize(self, n_trials: int, n_jobs: int = 1) -> None:
         """
         :param n_trials: number of optimization trials.
         :param n_jobs: maximum number of concurrently running workers.
@@ -141,6 +142,9 @@ class LocallySparse:
         best_epoch = study.best_params['num_epoch']
         y_pred = self.best_model.test(self.x_test)
         accuracy = accuracy_score(np.argmax(self.y_test, axis=1), y_pred)
+        f1 = f1_score(np.argmax(self.y_test, axis=1), y_pred, average='weighted')
+        precision = precision_score(np.argmax(self.y_test, axis=1), y_pred, average='weighted')
+        recall = recall_score(np.argmax(self.y_test, axis=1), y_pred, average='weighted')
         print("Trial Finished*************")
         print("Best model's prediction architecture: {}".format(best_pred_arch))
         print("Best model's gating architecture: {}".format(best_gate_arch))
@@ -149,7 +153,23 @@ class LocallySparse:
         print("Best model's learning rate: {}".format(best_lr))
         print("Best model's num of epochs: {}".format(best_epoch))
         print("Test accuracy : {}".format(accuracy))
-        return accuracy
+        print("Test F1 : {}".format(f1))
+        print("Test precision : {}".format(precision))
+        print("Test recall : {}".format(recall))
+
+        with open(os.path.join(results_path, 'hyperparameters.txt'), "w") as file:
+            file.write(
+                "prediction architecture: {}\n"
+                "gating architecture: {}\n"
+                "prediction activation function: {}\n"
+                "lambda: {}\n"
+                "learning rate: {}\n"
+                "number of epochs: {}\n"
+                "Accuracy: {}\n"
+                "F1: {}\n"
+                "precision: {}\n"
+                "recall: {}\n".format(best_pred_arch, best_gate_arch, best_activ_pred, best_lam,
+                                      best_lr, best_epoch, accuracy, f1, precision, recall))
 
     def get_results(self) -> None:
         """
@@ -191,7 +211,7 @@ class LocallySparse:
         cmap = sns.cubehelix_palette(light=0.9, as_cmap=True)
         cm_normalized = df_cm.div(df_cm.sum(axis=0), axis=1)
         sns.heatmap(cm_normalized, cbar=False, annot=True, cmap=cmap, square=True, fmt='.1%', annot_kws={'size': 10})
-        plt.title('LSPIN Neuron Classification')
+        plt.title('LSPIN Classification')
         plt.tight_layout()
         plt.draw()
         plt.savefig(results_path + "/lspin_results.png")
@@ -204,12 +224,23 @@ class LocallySparse:
         self.best_model.save(model_dir=results_path+'/model')
 
 
+def load_model():
+    tf.compat.v1.reset_default_graph()
+    v1 = tf.compat.v1.Variable(tf.compat.v1.constant(0.1, shape=[2]), name="v1")
+    v2 = tf.compat.v1.Variable(tf.compat.v1.constant(0.2, shape=[2]), name="v2")
+    saver = tf.compat.v1.train.import_meta_graph(results_path + '/model/model.ckpt.meta')
+    with tf.compat.v1.Session() as sess:
+        saver.restore(sess, results_path + '/model/model.ckpt')
+        print("Model restored")
+
+
 def main():
     clf = LocallySparse(data=transgenic_data, n_classes=5)
     clf.create_model(display_step=2000, feature_selection=True)
-    clf.optimize(n_trials=10000)
+    clf.optimize(n_trials=2800)
     clf.get_results()
     clf.save_model()
+    # load_model()
 
 
 if __name__ == '__main__':
