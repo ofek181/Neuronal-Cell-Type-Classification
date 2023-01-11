@@ -415,6 +415,7 @@ def run_best_model() -> None:
         print("Recall: " + str(l_recall))
         print("ROC AUC: " + str(l_roc_auc))
         dummy.plot_matrix(y_pred, y_true, tests[idx])
+    model.summary()
 
 
 class DannShap:
@@ -484,10 +485,10 @@ class DannShap:
 
 
 def main():
-    optimize(n_trials=10000)
+    # optimize(n_trials=5000)
     run_best_model()
-    model = DannShap()
-    model.explain_model()
+    # model = DannShap()
+    # model.explain_model()
     plt.show()
 
 
