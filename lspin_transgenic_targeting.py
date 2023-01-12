@@ -61,8 +61,8 @@ class LocallySparse:
         y = to_categorical(y, num_classes=self.n_classes)
         x = db.values.astype(np.float32)
         x = scaler.fit_transform(x)
-        x_train, x_val, y_train, y_val = train_test_split(x, y, train_size=0.8, random_state=42)
-        x_train, x_test, y_train, y_test = train_test_split(x_train, y_train, train_size=0.8, random_state=42)
+        x_train, x_val, y_train, y_val = train_test_split(x, y, train_size=0.8, random_state=1)
+        x_train, x_test, y_train, y_test = train_test_split(x_train, y_train, train_size=0.8, random_state=1)
         return x_train, y_train, x_val, y_val, x_test, y_test
 
     def _create_metadata(self) -> DataSet_meta:
@@ -93,14 +93,16 @@ class LocallySparse:
         :return: accuracy for the trial.
         """
         self.model_params['hidden_layers_node'] = trial.suggest_categorical("hidden_layers_node",
-                                                                            [[100, 50, 25, 10],
+                                                                            [[200, 100, 50, 25, 10],
+                                                                             [100, 50, 25, 10],
                                                                              [50, 30, 20, 10],
                                                                              [50, 25, 10], [32, 16, 8],
                                                                              [50, 25], [40, 20]])
         self.model_params['gating_net_hidden_layers_node'] = trial.suggest_categorical("gating_net_hidden_layers_node",
                                                                                        [[100, 100],
-                                                                                        [100, 100, 100],
                                                                                         [50, 50, 50],
+                                                                                        [100, 100, 100],
+                                                                                        [200, 200, 200],
                                                                                         [100, 100, 100, 100]])
         self.model_params['activation_pred'] = trial.suggest_categorical("activation_pred",
                                                                          ['relu', 'l_relu', 'sigmoid', 'tanh'])
@@ -186,10 +188,18 @@ class LocallySparse:
 
             gate_matrix.append(self.best_model.get_prob_alpha(label_data))
             plt.figure()
-            sns.heatmap(gate_matrix[i], vmin=0, vmax=1)
-            plt.title("Label: {}".format(self.class_names[i]))
+            sns.clustermap(gate_matrix[i], vmin=0, vmax=1, cbar_pos=None)
+            plt.xlabel('Features')
+            plt.ylabel('Samples')
+            plt.subplots_adjust(top=0.95, bottom=0.1, right=0.9)
+            plt.suptitle("Label: {}".format(self.class_names[i], fontsize=16))
             plt.draw()
-            plt.savefig(results_path + "/gate_matrix_" + str(self.class_names[i]) + ".png")
+            plt.savefig(results_path + "/gate_matrix_" + str(self.class_names[i]) + ".png", dpi=1200)
+
+        plt.figure(figsize=(2, 4))
+        sns.clustermap(np.array([[0, 0], [0, 0]]), vmin=0, vmax=1, cbar_pos=(.01, .2, .03, .4))
+        plt.draw()
+        plt.savefig(results_path + "cbar.png", dpi=1200)
 
         # plot the confusion matrix
         y_pred = self.best_model.test(self.x_test)
@@ -214,7 +224,7 @@ class LocallySparse:
         plt.title('LSPIN Classification')
         plt.tight_layout()
         plt.draw()
-        plt.savefig(results_path + "/lspin_results.png")
+        plt.savefig(results_path + "/lspin_results.png", dpi=1200)
         plt.show()
 
     def save_model(self):
@@ -237,7 +247,7 @@ def load_model():
 def main():
     clf = LocallySparse(data=transgenic_data, n_classes=5)
     clf.create_model(display_step=2000, feature_selection=True)
-    clf.optimize(n_trials=3000)
+    clf.optimize(n_trials=5000)
     clf.get_results()
     clf.save_model()
     # load_model()
