@@ -10,7 +10,6 @@ from sklearn.metrics import accuracy_score, f1_score, precision_score, recall_sc
 from sklearn.preprocessing import StandardScaler
 from tensorflow.keras.utils import to_categorical
 
-import lspin_model
 from lspin_model import Model
 from lspin_model import DataSet_meta
 from gpu_check import get_device
@@ -61,8 +60,8 @@ class LocallySparse:
         y = to_categorical(y, num_classes=self.n_classes)
         x = db.values.astype(np.float32)
         x = scaler.fit_transform(x)
-        x_train, x_val, y_train, y_val = train_test_split(x, y, train_size=0.8, random_state=1)
-        x_train, x_test, y_train, y_test = train_test_split(x_train, y_train, train_size=0.8, random_state=1)
+        x_train, x_test, y_train, y_test = train_test_split(x, y, train_size=0.8, random_state=2)
+        x_train, x_val, y_train, y_val = train_test_split(x_train, y_train, train_size=0.8, random_state=2)
         return x_train, y_train, x_val, y_val, x_test, y_test
 
     def _create_metadata(self) -> DataSet_meta:
@@ -199,7 +198,7 @@ class LocallySparse:
         plt.figure(figsize=(2, 4))
         sns.clustermap(np.array([[0, 0], [0, 0]]), vmin=0, vmax=1, cbar_pos=(.01, .2, .03, .4))
         plt.draw()
-        plt.savefig(results_path + "cbar.png", dpi=1200)
+        plt.savefig(results_path + "/cbar.png", dpi=1200)
 
         # plot the confusion matrix
         y_pred = self.best_model.test(self.x_test)
@@ -247,7 +246,7 @@ def load_model():
 def main():
     clf = LocallySparse(data=transgenic_data, n_classes=5)
     clf.create_model(display_step=2000, feature_selection=True)
-    clf.optimize(n_trials=5000)
+    clf.optimize(n_trials=50)
     clf.get_results()
     clf.save_model()
     # load_model()
