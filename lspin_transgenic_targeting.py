@@ -246,7 +246,7 @@ def load_model():
 def main():
     clf = LocallySparse(data=transgenic_data, n_classes=5)
     clf.create_model(display_step=2000, feature_selection=True)
-    clf.optimize(n_trials=50)
+    clf.optimize(n_trials=500)
     clf.get_results()
     clf.save_model()
     # load_model()
