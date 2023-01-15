@@ -22,7 +22,7 @@ from gpu_check import get_device
 from abc import ABC
 import warnings
 warnings.filterwarnings('ignore')
-plt.rcParams.update({'font.size': 14})
+plt.style.use('plot_style.txt')
 
 global best_model, model
 
@@ -265,7 +265,7 @@ class DANNClassifier(Model, ABC):
         s.set(xlabel='Predicted label', ylabel='True label')
         plt.title(title)
         name = title + '.png'
-        plt.savefig(fname=os.path.join(results_path, name), dpi=1200)
+        plt.savefig(fname=os.path.join(results_path, name))
 
     def plot_history(self) -> None:
         """
@@ -279,7 +279,7 @@ class DANNClassifier(Model, ABC):
         plt.ylabel('Accuracy')
         plt.ylim([0, 1])
         plt.legend(loc='lower right')
-        plt.savefig(fname=os.path.join(results_path, 'History.png'), dpi=1200)
+        plt.savefig(fname=os.path.join(results_path, 'History.png'))
 
 
 def objective(trial) -> float:
@@ -481,7 +481,7 @@ class DannShap:
         plt.title(title)
         plt.tight_layout()
         plt.draw()
-        plt.savefig(results_path + "/shapley.png", dpi=1200)
+        plt.savefig(results_path + "/shapley.png")
 
 
 def main():

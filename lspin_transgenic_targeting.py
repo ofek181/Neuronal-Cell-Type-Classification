@@ -18,7 +18,7 @@ warnings.filterwarnings('ignore')
 
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 tf.get_logger().setLevel('INFO')
-plt.rcParams.update({'font.size': 14})
+plt.style.use('plot_style.txt')
 
 # get directories
 filepath = os.path.dirname(os.path.realpath(__file__))
@@ -193,12 +193,12 @@ class LocallySparse:
             plt.subplots_adjust(top=0.95, bottom=0.1, right=0.9)
             plt.suptitle("Label: {}".format(self.class_names[i], fontsize=16))
             plt.draw()
-            plt.savefig(results_path + "/gate_matrix_" + str(self.class_names[i]) + ".png", dpi=1200)
+            plt.savefig(results_path + "/gate_matrix_" + str(self.class_names[i]) + ".png")
 
         plt.figure(figsize=(2, 4))
         sns.clustermap(np.array([[0, 0], [0, 0]]), vmin=0, vmax=1, cbar_pos=(.01, .2, .03, .4))
         plt.draw()
-        plt.savefig(results_path + "/cbar.png", dpi=1200)
+        plt.savefig(results_path + "/cbar.png")
 
         # plot the confusion matrix
         y_pred = self.best_model.test(self.x_test)
@@ -223,7 +223,7 @@ class LocallySparse:
         plt.title('LSPIN Classification')
         plt.tight_layout()
         plt.draw()
-        plt.savefig(results_path + "/lspin_results.png", dpi=1200)
+        plt.savefig(results_path + "/lspin_results.png")
         plt.show()
 
     def save_model(self):
