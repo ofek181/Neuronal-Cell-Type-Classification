@@ -1,0 +1,10 @@
+prediction architecture: [40, 20]
+gating architecture: [50, 50, 50]
+prediction activation function: tanh
+lambda: 0.010471730412694417
+learning rate: 0.05995631768490608
+number of epochs: 1000
+Accuracy: 0.9169675090252708
+F1: 0.9158417436958303
+precision: 0.9171863177319873
+recall: 0.9169675090252708

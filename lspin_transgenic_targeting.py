@@ -18,13 +18,13 @@ warnings.filterwarnings('ignore')
 
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 tf.get_logger().setLevel('INFO')
-plt.style.use('plot_style.txt')
 
 # get directories
 filepath = os.path.dirname(os.path.realpath(__file__))
 transgenic_data = pd.read_csv(filepath + '/data/mouse/ephys_data.csv')
 results_path = filepath + '/results/lspin'
 
+plt.style.use(filepath + '/plot_style.txt')
 
 class LocallySparse:
     """
@@ -60,8 +60,8 @@ class LocallySparse:
         y = to_categorical(y, num_classes=self.n_classes)
         x = db.values.astype(np.float32)
         x = scaler.fit_transform(x)
-        x_train, x_test, y_train, y_test = train_test_split(x, y, train_size=0.8, random_state=2)
-        x_train, x_val, y_train, y_val = train_test_split(x_train, y_train, train_size=0.8, random_state=2)
+        x_train, x_test, y_train, y_test = train_test_split(x, y, train_size=0.8, random_state=1)
+        x_train, x_val, y_train, y_val = train_test_split(x_train, y_train, train_size=0.8, random_state=1)
         return x_train, y_train, x_val, y_val, x_test, y_test
 
     def _create_metadata(self) -> DataSet_meta:
@@ -95,19 +95,22 @@ class LocallySparse:
                                                                             [[200, 100, 50, 25, 10],
                                                                              [100, 50, 25, 10],
                                                                              [50, 30, 20, 10],
+                                                                             [40, 30, 20, 10],
                                                                              [50, 25, 10], [32, 16, 8],
                                                                              [50, 25], [40, 20]])
         self.model_params['gating_net_hidden_layers_node'] = trial.suggest_categorical("gating_net_hidden_layers_node",
-                                                                                       [[100, 100],
+                                                                                       [[50, 50],
+                                                                                        [100, 100],
+                                                                                        [25, 25, 25],
                                                                                         [50, 50, 50],
                                                                                         [100, 100, 100],
                                                                                         [200, 200, 200],
                                                                                         [100, 100, 100, 100]])
         self.model_params['activation_pred'] = trial.suggest_categorical("activation_pred",
                                                                          ['relu', 'l_relu', 'sigmoid', 'tanh'])
-        self.model_params['lam'] = trial.suggest_loguniform('lam', 0.01, 1)
-        self.training_params['lr'] = trial.suggest_loguniform('learning_rate', 0.001, 0.1)
-        self.training_params['num_epoch'] = trial.suggest_categorical('num_epoch', [500, 1000, 1500])
+        self.model_params['lam'] = trial.suggest_loguniform('lam', 0.005, 1)
+        self.training_params['lr'] = trial.suggest_loguniform('learning_rate', 0.00005, 0.1)
+        self.training_params['num_epoch'] = trial.suggest_categorical('num_epoch', [500, 1000, 1500, 2000])
 
         self.model = Model(**self.model_params)
         _, _, _, _ = self.model.train(dataset=self._create_metadata(), **self.training_params)
@@ -246,7 +249,7 @@ def load_model():
 def main():
     clf = LocallySparse(data=transgenic_data, n_classes=5)
     clf.create_model(display_step=2000, feature_selection=True)
-    clf.optimize(n_trials=500)
+    clf.optimize(n_trials=6000)
     clf.get_results()
     clf.save_model()
     # load_model()
