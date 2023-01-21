@@ -22,7 +22,6 @@ from gpu_check import get_device
 from abc import ABC
 import warnings
 warnings.filterwarnings('ignore')
-plt.style.use('plot_style.txt')
 
 global best_model, model
 
@@ -45,6 +44,8 @@ random.seed(0)
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 n_classes = 2
 n_domains = 2
+
+plt.style.use(filepath + '/plot_style.txt')
 
 
 # Gradient Reversal Layer
@@ -396,11 +397,7 @@ def run_best_model() -> None:
     """
         run best model based on the one saved from the hyperparameter grid search.
     """
-    data, data_human_test, data_mouse_test = get_data()
-    dummy = DANNClassifier(db=data, weight_decay=0, dense_size=[], activation_function=[], learning_rate=0,
-                           drop_rate=[0], batch_size=0, n_epochs=0, optimizer='adam', lamda=0)
     model = keras.models.load_model(filepath=model_path, custom_objects={"GradientReversal": GradientReversal})
-    x_human, y_human, x_mouse, y_mouse = dummy.get_mouse_human_split_data(data_human_test, data_mouse_test)
     labels = [y_human, y_mouse]
     tests = ['Human test', 'Mouse test']
     for idx, data in enumerate([x_human, x_mouse]):

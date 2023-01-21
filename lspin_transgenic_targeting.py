@@ -26,6 +26,7 @@ results_path = filepath + '/results/lspin'
 
 plt.style.use(filepath + '/plot_style.txt')
 
+
 class LocallySparse:
     """
     uses the LSPIN model to classify transgenic targeting in mouse data.
