@@ -4,7 +4,7 @@ import numpy as np
 import pandas as pd
 import seaborn as sns
 import matplotlib.pyplot as plt
-from xgboost import XGBClassifier, plot_tree, plot_importance
+from xgboost import XGBClassifier, plot_importance
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import StandardScaler, LabelEncoder
 from sklearn.metrics import confusion_matrix
@@ -15,16 +15,19 @@ dir_path = os.path.dirname(os.path.realpath(__file__))
 data = pd.read_csv(dir_path + '/data/mouse/ephys_data.csv')
 model_name = os.path.abspath(dir_path + '/results/xgboost/xgboost_model.json')
 
+# style format
+plt.style.use(dir_path + '/plot_style.txt')
+
 
 class XGB:
     """
     XGBoost classifier
     """
-    def __init__(self, db: pd.DataFrame, n_estimators: int = 50, max_depth: int = 8,
+    def __init__(self, db: pd.DataFrame, gamma: int = 0, max_depth: int = 8,
                  max_leaves: int = 0, learning_rate: float = 0.25) -> None:
         """
         :param db: data used for the classification.
-        :param n_estimators: number of gradient boosted trees. Equivalent to number of boosting rounds.
+        :param gamma: minimum loss reduction required to make a further partition on a leaf node of the tree.
         :param max_depth: maximum tree depth for base learners.
         :param max_leaves: maximum number of leaves; 0 indicates no limit.
         :param learning_rate: boosting learning rate (xgb’s “eta”).
@@ -35,7 +38,7 @@ class XGB:
         self.encode()
         self.scale()
         self.x_train, self.y_train, self.x_test, self.y_test = self.split_train_test()
-        self.model = XGBClassifier(n_estimators=n_estimators, max_depth=max_depth, max_leaves=max_leaves,
+        self.model = XGBClassifier(gamma=gamma, max_depth=max_depth, max_leaves=max_leaves,
                                    learning_rate=learning_rate, verbosity=1,
                                    random_state=1)
 
@@ -52,7 +55,7 @@ class XGB:
         self.model.get_booster().feature_names = self.feature_names
         print("XGBoost")
         print("Learning Rate: " + str(self.model.learning_rate) + ", Max Depth: " + str(self.model.max_depth) +
-              ", N Estimators: " + str(self.model.n_estimators), ", Max Leaves: " + str(self.model.max_leaves))
+              ", Gamma: " + str(self.model.gamma), ", Max Leaves: " + str(self.model.max_leaves))
         y_pred = self.model.predict(self.x_test)
         y_pred_proba = self.model.predict_proba(self.x_test)
         accuracy, f1, precision, recall, roc_auc = calculate_metrics_multiclass(self.y_test, y_pred, y_pred_proba)
@@ -83,16 +86,8 @@ class XGB:
         """
         split the data into train and test.
         """
-        x_train, x_test, y_train, y_test = train_test_split(self.x, self.y, train_size=0.75, random_state=1)
+        x_train, x_test, y_train, y_test = train_test_split(self.x, self.y, train_size=0.2, random_state=1)
         return x_train, y_train, x_test, y_test
-
-    def visualize_tree(self) -> None:
-        """
-        visualize one of the boosting trees.
-        """
-        fig, ax = plt.subplots(figsize=(30, 30))
-        plot_tree(self.model, ax=ax)
-        plt.draw()
 
     def visualize_feature_importance(self) -> None:
         """
@@ -154,26 +149,26 @@ class XGB:
 
 
 def grid_search():
-    n_estimators = [5, 25, 50, 75]
-    max_depth = [5, 10, 15, 20, 30]
-    max_leaves = [0, 5, 10, 20, 30]
+    gamma = [0, 0.5, 1, 5]
+    max_depth = range(4, 12, 1)
+    max_leaves = range(0, 10, 1)
     lr = [0.1, 0.25, 0.5]
-    n_iter = len(n_estimators) * len(max_depth) * len(max_leaves) * len(lr)
-    iter: int = 0
+    n_iter = len(gamma) * len(max_depth) * len(max_leaves) * len(lr)
+    iteration: int = 0
     best = XGB(data)
     best.train()
-    for est in n_estimators:
+    for g in gamma:
         for depth in max_depth:
             for leaves in max_leaves:
                 for eta in lr:
-                    clf = XGB(data, est, depth, leaves, eta)
+                    clf = XGB(data, g, depth, leaves, eta)
                     clf.train()
                     print(clf.model.score(clf.x_test, clf.y_test))
                     if clf.model.score(clf.x_test, clf.y_test) >= best.model.score(clf.x_test, clf.y_test):
                         best = copy.copy(clf)
-                    print("Iteration number: " + str(iter) + " Out of: " + str(n_iter) +
+                    print("Iteration number: " + str(iteration) + " Out of: " + str(n_iter) +
                           " ,best score: " + str(best.model.score(clf.x_test, clf.y_test)))
-                    iter += 1
+                    iteration += 1
     best.save_model()
 
 
@@ -182,7 +177,6 @@ def main():
     clf = XGB(data)
     clf.load_model()
     clf.test()
-    clf.visualize_tree()
     clf.visualize_feature_importance()
     clf.plot_confusion_matrix()
     plt.show()
