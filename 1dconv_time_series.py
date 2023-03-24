@@ -20,44 +20,73 @@ file_path = os.path.dirname(os.path.realpath(__file__))
 data_path = file_path + '/data/single_spike/mouse/'
 
 
-def create_model(kernel_size: int = 3, activation: str = 'relu', padding: str = 'valid'):
-    # input layer
-    inp = Input(shape=(150, 1))
+class TimeAnalyzer:
+    def __init__(self) -> None:
+        # read the data
+        directories = ['glutamatergic', 'htr3a', 'pvalb', 'sst', 'vip']
+        features = []
+        labels = []
+        for idx, directory in enumerate(directories):
+            files = glob(data_path + directory + '/*')
+            arrays = [np.load(f) for f in files]
+            for array in arrays:
+                if len(array) == 600:
+                    array = signal.decimate(array, 4)
 
-    # conv layer 1
-    x = Conv1D(filters=32, kernel_size=kernel_size, activation=activation, padding=padding)(inp)
+                features.append(array)
+                labels.append(idx)
 
-    # max pooling 1
-    x = MaxPooling1D(2)(x)
+        # convert to a tensor
+        features = np.array(features)
+        labels = to_categorical(np.array(labels), num_classes=5)
 
-    # conv layer 2
-    x = Conv1D(filters=32, kernel_size=kernel_size, activation=activation, padding=padding)(x)
+        # split into train, validation and test
+        self.x_train, self.x_test, self.y_train, self.y_test = train_test_split(features,
+                                                                                labels,
+                                                                                test_size=0.2,
+                                                                                random_state=42,
+                                                                                shuffle=True)
+        self.model = self._create_model()
 
-    # max pooling 2
-    x = MaxPooling1D(2)(x)
+    @staticmethod
+    def _create_model(n_filters: tuple = (32, 32, 32),
+                      n_units: tuple = (128, 64),
+                      n_conv1d_layers: int = 3,
+                      n_dense_layers: int = 2,
+                      input_size: int = 150,
+                      kernel_size: int = 3,
+                      pool_size: int = 2,
+                      n_classes: int = 5,
+                      activation: str = 'relu',
+                      padding: str = 'valid',):
+        # check that each Conv1D layer has a specified number of filters
+        assert len(n_filters) == n_conv1d_layers
 
-    # conv layer 3
-    x = Conv1D(filters=16, kernel_size=kernel_size, activation=activation, padding=padding)(x)
+        # check that each Dense layer has a specified number of neurons
+        assert len(n_units) == n_dense_layers
 
-    # max pooling 3
-    x = MaxPooling1D(2)(x)
+        # input layer
+        x = Input(shape=(input_size, 1))
+        inputs = x
 
-    # flatten layer
-    x = Flatten()(x)
+        for layer in range(n_conv1d_layers):
+            x = Conv1D(filters=n_filters[layer], kernel_size=kernel_size, activation=activation, padding=padding)(x)
+            x = MaxPooling1D(pool_size)(x)
 
-    # fully connected layer 1
-    x = Dense(100, activation=activation)(x)
+        # flatten layer
+        x = Flatten()(x)
 
-    # fully connected layer 2
-    x = Dense(50, activation=activation)(x)
+        for layer in range(n_dense_layers):
+            x = Dense(units=n_units[layer], activation=activation)(x)
 
-    # output layer
-    out = Dense(5, activation="softmax")(x)
+        # output layer
+        outputs = Dense(n_classes, activation="softmax")(x)
 
-    return Model(inputs=inp, outputs=out)
+        return Model(inputs=inputs, outputs=outputs)
 
 
 def main():
+    model = TimeAnalyzer()
     # read the data
     directories = ['glutamatergic', 'htr3a', 'pvalb', 'sst', 'vip']
     features = []
@@ -81,21 +110,21 @@ def main():
     # split into train, validation and test
     x_train, x_test, y_train, y_test = train_test_split(features, labels, test_size=0.2, random_state=42, shuffle=True)
 
-    # define the model
-    model = create_model()
-
-    # compile the model
-    model.compile(optimizer='adam',
-                  loss='categorical_crossentropy',
-                  metrics=['accuracy'])
-
-    # fit the model
-    history = model.fit(x=x_train,
-                        y=y_train,
-                        batch_size=8,
-                        epochs=10,
-                        validation_data=(x_test, y_test),
-                        shuffle=True)
+    # # define the model
+    # model = create_model()
+    #
+    # # compile the model
+    # model.compile(optimizer='adam',
+    #               loss='categorical_crossentropy',
+    #               metrics=['accuracy'])
+    #
+    # # fit the model
+    # history = model.fit(x=x_train,
+    #                     y=y_train,
+    #                     batch_size=8,
+    #                     epochs=10,
+    #                     validation_data=(x_test, y_test),
+    #                     shuffle=True)
 
 
 if __name__ == '__main__':
