@@ -1,0 +1,13 @@
+best_n_filters: [64, 64, 64]
+best_n_units [64, 64, 64]
+best_n_conv1d_layers: 3
+best_n_dense_layers: 2
+best_kernel_size: 4
+best_stride_size: 1
+best_pool_size : 2
+best_activation : selu
+best_optimizer: rmsprop
+best_batch_size: 16
+best_epochs: 200
+Validation loss: 0.7914350628852844
+Validation accuracy: 0.7753846049308777
