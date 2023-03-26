@@ -74,7 +74,7 @@ class TimeAnalyzer:
                      pool_size: int = 2,
                      n_classes: int = 5,
                      activation: str = 'relu',
-                     padding: str = 'valid',):
+                     padding: str = 'same',):
         # check that each Conv1D layer has a specified number of filters
         assert len(n_filters) >= n_conv1d_layers
 
@@ -88,7 +88,7 @@ class TimeAnalyzer:
         for layer in range(n_conv1d_layers):
             x = Conv1D(filters=n_filters[layer], kernel_size=kernel_size, strides=stride_size,
                        activation=activation, padding=padding)(x)
-            x = MaxPooling1D(pool_size)(x)
+            x = MaxPooling1D(pool_size, padding=padding)(x)
 
         # flatten layer
         x = Flatten()(x)
