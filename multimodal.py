@@ -23,8 +23,9 @@ tf.get_logger().setLevel('INFO')
 
 # get directories
 file_path = os.path.dirname(os.path.realpath(__file__))
-data_path_fft = file_path + '/data/single_spike_fft/mouse/'
 data_path_time = file_path + '/data/single_spike/mouse/'
+data_path_fft = file_path + '/data/single_spike_fft/mouse/'
+data_path_tabular = file_path + '/data/mouse/single_spike_data.csv'
 results_path = file_path + '/results/multimodal'
 
 plt.style.use(file_path + '/plot_style.txt')
@@ -35,8 +36,9 @@ class_names = {0: 'Glutamatergic', 1: 'Htr3a+|Vip-', 2: 'Pvalb+', 3: 'Sst+', 4: 
 # TODO add documentation
 class SingleSpikeAnalyzer:
     def __init__(self) -> None:
-        self.x_train_time, self. x_test_time, self.y_train_time, self.y_test_time, \
-            self.x_train_fft, self.x_test_fft, self.y_train_fft, self.y_test_fft = self.process_data()
+        self.x_train_time, self. x_test_time, self.y_train_time, self.y_test_time,\
+            self.x_train_fft, self.x_test_fft, self.y_train_fft, self.y_test_fft,\
+            self.x_train_tab, self.x_test_tab, self.y_train_tab, self.y_test_tab = self.process_data()
         self.model, self.best_model = self.create_model(), None
         # TODO: save history
         self.history = None
@@ -45,15 +47,19 @@ class SingleSpikeAnalyzer:
     def process_data(test_size: float = 0.2):
         # read the data
         directories = ['glutamatergic', 'htr3a', 'pvalb', 'sst', 'vip']
-        features_time = []
-        labels_time = []
-        features_fft = []
-        labels_fft = []
-        # read the time sequence data
+        features_time, labels_time = [], []
+        features_fft, labels_fft = [], []
+        features_tabular, labels_tabular = [], []
+        data_tabular = pd.read_csv(data_path_tabular)
+        db = data_tabular.dropna(axis=1, how='all')  # there is no reason for NAN values in this data
+        db = db.dropna(axis=0)
+        irrelevant_columns = ['transgenic_line', 'neurotransmitter', 'dendrite_type', 'reporter_status', 'layer']
+        db = db.drop([x for x in irrelevant_columns if x in db.columns], axis=1, errors='ignore')
+        n = 0
         for idx, directory in enumerate(directories):
             files_time = glob(data_path_time + directory + '/*')
             arrays = [np.load(f) for f in files_time]
-            for array in arrays:
+            for i, array in enumerate(arrays):
                 if len(array) == 600:
                     array = signal.decimate(array, 4)
 
@@ -76,6 +82,22 @@ class SingleSpikeAnalyzer:
                 features_fft.append(array)
                 labels_fft.append(idx)
 
+            names = [f[f.rfind('/') + 1:f.rfind('.')] for f in files_time]
+            for name in names:
+                value = db[db['file_name'] == name]
+                tmp = value.drop('file_name', axis=1)
+                features_tabular.append(tmp.values.flatten())
+                labels_tabular.append(idx)
+                if value.empty:  # the signal is not spiny nor aspiny
+                    del features_time[n]
+                    del labels_time[n]
+                    del features_fft[n]
+                    del labels_fft[n]
+                    del features_tabular[n]
+                    del labels_tabular[n]
+                    n -= 1
+                n += 1
+
         # normalize signal between 0 and 1
         features_time = np.stack(features_time, axis=0)
         features_time = (features_time - np.min(features_time)) / (np.max(features_time) - np.min(features_time))
@@ -87,7 +109,7 @@ class SingleSpikeAnalyzer:
         x_train_time, x_test_time, y_train_time, y_test_time = train_test_split(features_time,
                                                                                 labels_time,
                                                                                 test_size=test_size,
-                                                                                random_state=2,
+                                                                                random_state=42,
                                                                                 shuffle=True)
 
         # normalize signal between 0 and 1
@@ -101,10 +123,25 @@ class SingleSpikeAnalyzer:
         x_train_fft, x_test_fft, y_train_fft, y_test_fft = train_test_split(features_fft,
                                                                             labels_fft,
                                                                             test_size=test_size,
-                                                                            random_state=2,
+                                                                            random_state=42,
                                                                             shuffle=True)
 
-        return x_train_time, x_test_time, y_train_time, y_test_time, x_train_fft, x_test_fft, y_train_fft, y_test_fft
+        # normalize signal between 0 and 1
+        features_tabular = np.stack(features_tabular, axis=0)
+
+        # one hot encoding
+        labels_tabular = to_categorical(np.array(labels_tabular), num_classes=5)
+
+        # split into train and test
+        x_train_tab, x_test_tab, y_train_tab, y_test_tab = train_test_split(features_tabular,
+                                                                            labels_tabular,
+                                                                            test_size=test_size,
+                                                                            random_state=42,
+                                                                            shuffle=True)
+
+        return x_train_time, x_test_time, y_train_time, y_test_time,\
+            x_train_fft, x_test_fft, y_train_fft, y_test_fft,\
+            x_train_tab, x_test_tab, y_train_tab, y_test_tab
 
     # TODO add tabular data
     @staticmethod
@@ -112,22 +149,26 @@ class SingleSpikeAnalyzer:
                      n_filters_f: tuple = (32, 32, 32),
                      n_units_t: tuple = (128, 64),
                      n_units_f: tuple = (128, 64),
+                     n_units_tab: tuple = (10, 10),
                      n_conv1d_layers_t: int = 3,
                      n_conv1d_layers_f: int = 3,
                      n_dense_layers_t: int = 2,
                      n_dense_layers_f: int = 2,
+                     n_dense_layers_tab: int = 2,
                      input_size_t: int = 150,
                      input_size_f: int = 75,
+                     input_size_tab: int = 11,
                      kernel_size_t: int = 3,
                      kernel_size_f: int = 3,
                      stride_size_t: int = 1,
                      stride_size_f: int = 1,
                      pool_size_t: int = 2,
                      pool_size_f: int = 2,
-                     concatenate_size: int = 10,
+                     concatenate_size: int = 5,
                      n_classes: int = 5,
                      activation_t: str = 'relu',
                      activation_f: str = 'relu',
+                     activation_tab: str = 'relu',
                      padding: str = 'same',):
         # check that each Conv1D layer has a specified number of filters
         assert len(n_filters_t) >= n_conv1d_layers_t
@@ -136,6 +177,7 @@ class SingleSpikeAnalyzer:
         # check that each Dense layer has a specified number of neurons
         assert len(n_units_t) >= n_dense_layers_t
         assert len(n_units_f) >= n_dense_layers_f
+        assert len(n_units_tab) >= n_dense_layers_tab
 
         # time domain model
         x_t = Input(shape=(input_size_t, 1))
@@ -150,7 +192,7 @@ class SingleSpikeAnalyzer:
             x_t = Dense(units=n_units_t[layer], activation=activation_t)(x_t)
         # output layer
         output_t = Dense(concatenate_size, activation=activation_t)(x_t)
-        model_t = Model(inputs=input_t, outputs=output_t)
+        # model_t = Model(inputs=input_t, outputs=output_t)
 
         # frequency domain model
         x_f = Input(shape=(input_size_f, 1))
@@ -165,12 +207,22 @@ class SingleSpikeAnalyzer:
             x_f = Dense(units=n_units_f[layer], activation=activation_f)(x_f)
         # output layer
         output_f = Dense(concatenate_size, activation=activation_f)(x_f)
-        model_f = Model(inputs=input_f, outputs=output_f)
+        # model_f = Model(inputs=input_f, outputs=output_f)
 
-        # combine the output of the two models
-        combined = concatenate([model_t.output, model_f.output])
-        out = Dense(n_classes, activation="softmax")(combined)
-        model = Model(inputs=[model_t.input, model_f.input], outputs=out)
+        # tabular domain model
+        x_tab = Input(shape=(input_size_tab, 1))
+        input_tab = x_tab
+        x_tab = Flatten()(x_tab)
+        for layer in range(n_dense_layers_tab):
+            x_tab = Dense(units=n_units_tab[layer], activation=activation_tab)(x_tab)
+        output_tab = Dense(concatenate_size, activation=activation_f)(x_tab)
+        # model_tab = Model(inputs=input_tab, outputs=output_tab)
+
+        # combine the output of the three models
+        combined = concatenate([output_t, output_f, output_tab])
+        out = Dense(10, activation="relu")(combined)
+        out = Dense(n_classes, activation="softmax")(out)
+        model = Model(inputs=[input_t, input_f, input_tab], outputs=out)
         return model
 
     def train_and_test(self, optimizer: str = 'adam', batch_size: int = 16,
@@ -195,9 +247,10 @@ class SingleSpikeAnalyzer:
         d_class_weights = dict(enumerate(class_weights))
 
         # fit the model
-        history = self.model.fit(x=[self.x_train_time, self.x_train_fft], y=self.y_train_time,
+        history = self.model.fit(x=[self.x_train_time, self.x_train_fft, self.x_train_tab], y=self.y_train_time,
                                  batch_size=batch_size, epochs=epochs, validation_data=([self.x_test_time,
-                                                                                         self.x_test_fft],
+                                                                                         self.x_test_fft,
+                                                                                         self.x_test_tab],
                                                                                         self.y_test_time),
                                  shuffle=True, callbacks=[model_checkpoint_callback],
                                  class_weight=d_class_weights, verbose=0)
@@ -225,10 +278,12 @@ class SingleSpikeAnalyzer:
         n_units_f = trial.suggest_categorical("n_units_f", ([256, 128, 64],
                                                             [128, 64, 32],
                                                             [64, 32, 16]))
+        n_units_tab = trial.suggest_categorical("n_units_tab", ([10, 10], [10, 8], [11, 7]))
         n_conv1d_layers_t = trial.suggest_categorical("n_conv1d_layers_t", (1, 2, 3))
         n_conv1d_layers_f = trial.suggest_categorical("n_conv1d_layers_f", (1, 2, 3))
         n_dense_layers_t = trial.suggest_categorical("n_dense_layers_t", (1, 2, 3))
         n_dense_layers_f = trial.suggest_categorical("n_dense_layers_f", (1, 2, 3))
+        n_dense_layers_tab = trial.suggest_categorical("n_dense_layers_tab", (1, 2))
         kernel_size_t = trial.suggest_categorical("kernel_size_t", (2, 3, 4, 5, 6))
         kernel_size_f = trial.suggest_categorical("kernel_size_f", (2, 3, 4, 5, 6))
         stride_size_t = trial.suggest_categorical("stride_size_t", (1, 2, 3, 4))
@@ -237,6 +292,7 @@ class SingleSpikeAnalyzer:
         pool_size_f = trial.suggest_categorical("pool_size_f", (1, 2))
         activation_t = trial.suggest_categorical("activation_t", ('relu', 'selu', 'swish', 'sigmoid', 'tanh'))
         activation_f = trial.suggest_categorical("activation_f", ('relu', 'selu', 'swish', 'sigmoid', 'tanh'))
+        activation_tab = trial.suggest_categorical("activation_tab", ('relu', 'selu', 'swish', 'sigmoid', 'tanh'))
         concatenate_size = trial.suggest_categorical("concatenate_size", (5, 10, 15, 20))
         optimizer = trial.suggest_categorical("optimizer", ('adam', 'sgd', 'rmsprop'))
         batch_size = trial.suggest_categorical("batch_size", (32, 64, 128))
@@ -246,10 +302,12 @@ class SingleSpikeAnalyzer:
                                        n_filters_f=n_filters_f,
                                        n_units_t=n_units_t,
                                        n_units_f=n_units_f,
+                                       n_units_tab=n_units_tab,
                                        n_conv1d_layers_t=n_conv1d_layers_t,
                                        n_conv1d_layers_f=n_conv1d_layers_f,
                                        n_dense_layers_t=n_dense_layers_t,
                                        n_dense_layers_f=n_dense_layers_f,
+                                       n_dense_layers_tab=n_dense_layers_tab,
                                        kernel_size_t=kernel_size_t,
                                        kernel_size_f=kernel_size_f,
                                        stride_size_t=stride_size_t,
@@ -258,6 +316,7 @@ class SingleSpikeAnalyzer:
                                        pool_size_f=pool_size_f,
                                        activation_t=activation_t,
                                        activation_f=activation_f,
+                                       activation_tab=activation_tab,
                                        concatenate_size=concatenate_size)
 
         history = self.train_and_test(optimizer=optimizer, batch_size=batch_size, epochs=epochs)
@@ -270,10 +329,12 @@ class SingleSpikeAnalyzer:
         best_n_filters_f = study.best_params['n_filters_f']
         best_n_units_t = study.best_params['n_units_t']
         best_n_units_f = study.best_params['n_units_f']
+        best_n_units_tab = study.best_params['n_units_tab']
         best_n_conv1d_layers_t = study.best_params['n_conv1d_layers_t']
         best_n_conv1d_layers_f = study.best_params['n_conv1d_layers_f']
         best_n_dense_layers_t = study.best_params['n_dense_layers_t']
         best_n_dense_layers_f = study.best_params['n_dense_layers_f']
+        best_n_dense_layers_tab = study.best_params['n_dense_layers_tab']
         best_kernel_size_t = study.best_params['kernel_size_t']
         best_kernel_size_f = study.best_params['kernel_size_f']
         best_stride_size_t = study.best_params['stride_size_t']
@@ -282,12 +343,14 @@ class SingleSpikeAnalyzer:
         best_pool_size_f = study.best_params['pool_size_f']
         best_activation_t = study.best_params['activation_t']
         best_activation_f = study.best_params['activation_f']
+        best_activation_tab = study.best_params['activation_tab']
         best_concatenate_size = study.best_params['concatenate_size']
         best_optimizer = study.best_params['optimizer']
         best_batch_size = study.best_params['batch_size']
         best_epochs = study.best_params['epochs']
 
-        results = self.best_model.evaluate(x=[self.x_test_time, self.x_test_fft], y=self.y_test_time, verbose=2)
+        results = self.best_model.evaluate(x=[self.x_test_time, self.x_test_fft, self.x_test_tab],
+                                           y=self.y_test_time, verbose=2)
 
         print("********* Trial Finished *********")
         print("Time Sequence Neural Network: ")
@@ -308,6 +371,10 @@ class SingleSpikeAnalyzer:
         print("best_stride_size: {}".format(best_stride_size_f))
         print("best_pool_size : {}".format(best_pool_size_f))
         print("best_activation : {}".format(best_activation_f))
+        print("Tabular Neural Network: ")
+        print("best_n_units {}".format(best_n_units_tab))
+        print("best_n_dense_layers: {}".format(best_n_dense_layers_tab))
+        print("best_activation : {}".format(best_activation_tab))
         print("General Parameters: ")
         print("best_out_size: {}".format(best_concatenate_size))
         print("best_optimizer: {}".format(best_optimizer))
@@ -320,10 +387,12 @@ class SingleSpikeAnalyzer:
                 "best_n_filters_f: {}\n"
                 "best_n_units_t: {}\n"
                 "best_n_units_f: {}\n"
+                "best_n_units_tab: {}\n"
                 "best_n_conv1d_layers_t: {}\n"
                 "best_n_conv1d_layers_f: {}\n"
                 "best_n_dense_layers_t: {}\n"
                 "best_n_dense_layers_f: {}\n"
+                "best_n_dense_layers_tab: {}\n"
                 "best_kernel_size_t: {}\n"
                 "best_kernel_size_f: {}\n"
                 "best_stride_size_t: {}\n"
@@ -332,24 +401,25 @@ class SingleSpikeAnalyzer:
                 "best_pool_size_f: {}\n"
                 "best_activation_t: {}\n"
                 "best_activation_f: {}\n"
+                "best_activation_tab: {}\n"
                 "best_out_size: {}\n"
                 "best_optimizer: {}\n"
                 "best_batch_size: {}\n"
                 "best_epochs: {}\n"
                 "Validation loss: {}\n"
                 "Validation accuracy: {}".format(best_n_filters_t, best_n_filters_t,  best_n_units_t, best_n_units_f,
-                                                 best_n_conv1d_layers_t, best_n_conv1d_layers_f,
-                                                 best_n_dense_layers_t, best_n_dense_layers_f,
+                                                 best_n_units_tab, best_n_conv1d_layers_t, best_n_conv1d_layers_f,
+                                                 best_n_dense_layers_t, best_n_dense_layers_f, best_n_dense_layers_tab,
                                                  best_kernel_size_t, best_kernel_size_f,
                                                  best_stride_size_t, best_stride_size_f,
                                                  best_pool_size_t, best_pool_size_f,
-                                                 best_activation_t, best_activation_f,
+                                                 best_activation_t, best_activation_f, best_activation_tab,
                                                  best_concatenate_size, best_optimizer, best_batch_size,
                                                  best_epochs, results[0], results[1]))
 
     def plot_results(self):
         # plot the confusion matrix
-        y_pred = np.argmax(self.best_model.predict([self.x_test_time, self.x_test_fft]), axis=1)
+        y_pred = np.argmax(self.best_model.predict([self.x_test_time, self.x_test_fft, self.x_test_tab]), axis=1)
         y_true = np.argmax(self.y_test_time, axis=1)
 
         def reverse_labels(tup: tuple) -> list:
