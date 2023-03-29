@@ -13,6 +13,7 @@ from sklearn.model_selection import train_test_split
 from sklearn.utils.class_weight import compute_class_weight
 from sklearn.metrics import confusion_matrix
 from keras.utils.np_utils import to_categorical
+from sklearn.preprocessing import normalize
 
 from gpu_check import get_device
 import warnings
@@ -109,7 +110,7 @@ class SingleSpikeAnalyzer:
         x_train_time, x_test_time, y_train_time, y_test_time = train_test_split(features_time,
                                                                                 labels_time,
                                                                                 test_size=test_size,
-                                                                                random_state=42,
+                                                                                random_state=7,
                                                                                 shuffle=True)
 
         # normalize signal between 0 and 1
@@ -123,11 +124,12 @@ class SingleSpikeAnalyzer:
         x_train_fft, x_test_fft, y_train_fft, y_test_fft = train_test_split(features_fft,
                                                                             labels_fft,
                                                                             test_size=test_size,
-                                                                            random_state=42,
+                                                                            random_state=7,
                                                                             shuffle=True)
 
-        # normalize signal between 0 and 1
+        # normalize each column
         features_tabular = np.stack(features_tabular, axis=0)
+        features_tabular = normalize(features_tabular, axis=0, norm='max')
 
         # one hot encoding
         labels_tabular = to_categorical(np.array(labels_tabular), num_classes=5)
@@ -136,14 +138,13 @@ class SingleSpikeAnalyzer:
         x_train_tab, x_test_tab, y_train_tab, y_test_tab = train_test_split(features_tabular,
                                                                             labels_tabular,
                                                                             test_size=test_size,
-                                                                            random_state=42,
+                                                                            random_state=7,
                                                                             shuffle=True)
 
         return x_train_time, x_test_time, y_train_time, y_test_time,\
             x_train_fft, x_test_fft, y_train_fft, y_test_fft,\
             x_train_tab, x_test_tab, y_train_tab, y_test_tab
 
-    # TODO add tabular data
     @staticmethod
     def create_model(n_filters_t: tuple = (32, 32, 32),
                      n_filters_f: tuple = (32, 32, 32),
@@ -278,7 +279,7 @@ class SingleSpikeAnalyzer:
         n_units_f = trial.suggest_categorical("n_units_f", ([256, 128, 64],
                                                             [128, 64, 32],
                                                             [64, 32, 16]))
-        n_units_tab = trial.suggest_categorical("n_units_tab", ([10, 10], [10, 8], [11, 7]))
+        n_units_tab = trial.suggest_categorical("n_units_tab", ([11, 11], [10, 10]))
         n_conv1d_layers_t = trial.suggest_categorical("n_conv1d_layers_t", (1, 2, 3))
         n_conv1d_layers_f = trial.suggest_categorical("n_conv1d_layers_f", (1, 2, 3))
         n_dense_layers_t = trial.suggest_categorical("n_dense_layers_t", (1, 2, 3))
@@ -286,17 +287,17 @@ class SingleSpikeAnalyzer:
         n_dense_layers_tab = trial.suggest_categorical("n_dense_layers_tab", (1, 2))
         kernel_size_t = trial.suggest_categorical("kernel_size_t", (2, 3, 4, 5, 6))
         kernel_size_f = trial.suggest_categorical("kernel_size_f", (2, 3, 4, 5, 6))
-        stride_size_t = trial.suggest_categorical("stride_size_t", (1, 2, 3, 4))
-        stride_size_f = trial.suggest_categorical("stride_size_f", (1, 2, 3, 4))
+        stride_size_t = trial.suggest_categorical("stride_size_t", (1, 2, 3))
+        stride_size_f = trial.suggest_categorical("stride_size_f", (1, 2, 3))
         pool_size_t = trial.suggest_categorical("pool_size_t", (1, 2))
         pool_size_f = trial.suggest_categorical("pool_size_f", (1, 2))
         activation_t = trial.suggest_categorical("activation_t", ('relu', 'selu', 'swish', 'sigmoid', 'tanh'))
         activation_f = trial.suggest_categorical("activation_f", ('relu', 'selu', 'swish', 'sigmoid', 'tanh'))
         activation_tab = trial.suggest_categorical("activation_tab", ('relu', 'selu', 'swish', 'sigmoid', 'tanh'))
-        concatenate_size = trial.suggest_categorical("concatenate_size", (5, 10, 15, 20))
+        concatenate_size = trial.suggest_categorical("concatenate_size", (5, 10))
         optimizer = trial.suggest_categorical("optimizer", ('adam', 'sgd', 'rmsprop'))
-        batch_size = trial.suggest_categorical("batch_size", (32, 64, 128))
-        epochs = trial.suggest_categorical("epochs", (25, 50, 100, 150))
+        batch_size = trial.suggest_categorical("batch_size", (32, 64))
+        epochs = trial.suggest_categorical("epochs", (50, 100, 150, 200))
 
         self.model = self.create_model(n_filters_t=n_filters_t,
                                        n_filters_f=n_filters_f,
@@ -433,8 +434,7 @@ class SingleSpikeAnalyzer:
         plt.figure()
         cmap = sns.cubehelix_palette(light=0.9, as_cmap=True)
         cm_normalized = df_cm.div(df_cm.sum(axis=0), axis=1)
-        sns.heatmap(cm_normalized, cbar=False, annot=True, cmap=cmap, square=True, fmt='.1%',
-                    annot_kws={'size': 10})
+        sns.heatmap(cm_normalized, cbar=False, annot=True, cmap=cmap, square=True, fmt='.1%', annot_kws={'size': 10})
         plt.title('Multimodal Classification')
         plt.tight_layout()
         plt.draw()
@@ -450,7 +450,7 @@ class SingleSpikeAnalyzer:
 
 def main():
     model = SingleSpikeAnalyzer()
-    model.optimize(n_trials=100)
+    model.optimize(n_trials=200)
     model.plot_results()
     model.save_model()
 
