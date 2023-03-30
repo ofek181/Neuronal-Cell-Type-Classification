@@ -6,6 +6,8 @@ import tensorflow as tf
 import matplotlib.pyplot as plt
 import seaborn as sns
 from glob import glob
+
+import tensorflow.python.keras.callbacks
 from scipy import signal
 from tensorflow.keras.layers import Conv1D, Dense, Flatten, Input, MaxPooling1D, concatenate
 from tensorflow.keras.models import Model
@@ -34,19 +36,22 @@ plt.style.use(file_path + '/plot_style.txt')
 class_names = {0: 'Glutamatergic', 1: 'Htr3a+|Vip-', 2: 'Pvalb+', 3: 'Sst+', 4: 'Vip+'}
 
 
-# TODO add documentation
 class SingleSpikeAnalyzer:
+    """
+    Uses a single action potential provoked by a short square stimulus to classify the neuron type.
+    """
     def __init__(self) -> None:
         self.x_train_time, self. x_test_time, self.y_train_time, self.y_test_time,\
             self.x_train_fft, self.x_test_fft, self.y_train_fft, self.y_test_fft,\
             self.x_train_tab, self.x_test_tab, self.y_train_tab, self.y_test_tab = self.process_data()
-        self.model, self.best_model = self.create_model(), None
-        # TODO: save history
-        self.history = None
+        self.model, self.best_model = None, None
+        self.history, self.best_history = None, None
 
     @staticmethod
-    def process_data(test_size: float = 0.2):
-        # read the data
+    def process_data(test_size: float = 0.2, seed: int = 42) -> tuple:
+        """
+        Reads the time series data, the FFT data and tabular data, normalizes each domain and splits into train/test.
+        """
         directories = ['glutamatergic', 'htr3a', 'pvalb', 'sst', 'vip']
         features_time, labels_time = [], []
         features_fft, labels_fft = [], []
@@ -57,7 +62,9 @@ class SingleSpikeAnalyzer:
         irrelevant_columns = ['transgenic_line', 'neurotransmitter', 'dendrite_type', 'reporter_status', 'layer']
         db = db.drop([x for x in irrelevant_columns if x in db.columns], axis=1, errors='ignore')
         n = 0
+        # TODO check out what happens if we interpolate instead of decimate
         for idx, directory in enumerate(directories):
+            # raw signal, action potential voltage vs time in milliseconds.
             files_time = glob(data_path_time + directory + '/*')
             arrays = [np.load(f) for f in files_time]
             for i, array in enumerate(arrays):
@@ -67,6 +74,7 @@ class SingleSpikeAnalyzer:
                 features_time.append(array)
                 labels_time.append(idx)
 
+            # FFT signal of the original sequence.
             files_fft = glob(data_path_fft + directory + '/*')
             arrays = [np.load(f) for f in files_fft]
             for array in arrays:
@@ -83,6 +91,7 @@ class SingleSpikeAnalyzer:
                 features_fft.append(array)
                 labels_fft.append(idx)
 
+            # tabular features analyzed from the raw data.
             names = [f[f.rfind('/') + 1:f.rfind('.')] for f in files_time]
             for name in names:
                 value = db[db['file_name'] == name]
@@ -110,7 +119,7 @@ class SingleSpikeAnalyzer:
         x_train_time, x_test_time, y_train_time, y_test_time = train_test_split(features_time,
                                                                                 labels_time,
                                                                                 test_size=test_size,
-                                                                                random_state=7,
+                                                                                random_state=seed,
                                                                                 shuffle=True)
 
         # normalize signal between 0 and 1
@@ -124,7 +133,7 @@ class SingleSpikeAnalyzer:
         x_train_fft, x_test_fft, y_train_fft, y_test_fft = train_test_split(features_fft,
                                                                             labels_fft,
                                                                             test_size=test_size,
-                                                                            random_state=7,
+                                                                            random_state=seed,
                                                                             shuffle=True)
 
         # normalize each column
@@ -138,7 +147,7 @@ class SingleSpikeAnalyzer:
         x_train_tab, x_test_tab, y_train_tab, y_test_tab = train_test_split(features_tabular,
                                                                             labels_tabular,
                                                                             test_size=test_size,
-                                                                            random_state=7,
+                                                                            random_state=seed,
                                                                             shuffle=True)
 
         return x_train_time, x_test_time, y_train_time, y_test_time,\
@@ -170,7 +179,7 @@ class SingleSpikeAnalyzer:
                      activation_t: str = 'relu',
                      activation_f: str = 'relu',
                      activation_tab: str = 'relu',
-                     padding: str = 'same',):
+                     padding: str = 'same') -> tensorflow.keras.models.Model:
         # check that each Conv1D layer has a specified number of filters
         assert len(n_filters_t) >= n_conv1d_layers_t
         assert len(n_filters_f) >= n_conv1d_layers_f
@@ -227,7 +236,7 @@ class SingleSpikeAnalyzer:
         return model
 
     def train_and_test(self, optimizer: str = 'adam', batch_size: int = 16,
-                       epochs: int = 50):
+                       epochs: int = 50) -> tensorflow.keras.callbacks.History:
         # compile the model
         self.model.compile(optimizer=optimizer,
                            loss='categorical_crossentropy',
@@ -263,6 +272,7 @@ class SingleSpikeAnalyzer:
     def callback(self, study, trial):
         if study.best_trial == trial:
             self.best_model = self.model
+            self.best_history = self.history
 
     def objective(self, trial):
         n_filters_t = trial.suggest_categorical("n_filters_t", ([256, 256, 256],
@@ -320,8 +330,8 @@ class SingleSpikeAnalyzer:
                                        activation_tab=activation_tab,
                                        concatenate_size=concatenate_size)
 
-        history = self.train_and_test(optimizer=optimizer, batch_size=batch_size, epochs=epochs)
-        return max(history.history['val_accuracy'])
+        self.history = self.train_and_test(optimizer=optimizer, batch_size=batch_size, epochs=epochs)
+        return max(self.history.history['val_accuracy'])
 
     def optimize(self, n_trials: int, n_jobs: int = 1):
         study = optuna.create_study(study_name='multimodal', direction='maximize')
@@ -431,7 +441,7 @@ class SingleSpikeAnalyzer:
         df_cm = pd.DataFrame(matrix, columns=np.unique(y_true_labeled), index=np.unique(y_true_labeled))
         # df_cm.index.name = 'Actual'
         # df_cm.columns.name = 'Predicted'
-        plt.figure()
+        plt.figure(1)
         cmap = sns.cubehelix_palette(light=0.9, as_cmap=True)
         cm_normalized = df_cm.div(df_cm.sum(axis=0), axis=1)
         sns.heatmap(cm_normalized, cbar=False, annot=True, cmap=cmap, square=True, fmt='.1%', annot_kws={'size': 10})
@@ -439,6 +449,28 @@ class SingleSpikeAnalyzer:
         plt.tight_layout()
         plt.draw()
         plt.savefig(results_path + "/confusion_matrix.png")
+        plt.show()
+
+        plt.figure(2)
+        plt.plot(self.best_history.history['accuracy'])
+        plt.plot(self.best_history.history['val_accuracy'])
+        plt.title('Accuracy vs. Epoch')
+        plt.ylabel('Accuracy')
+        plt.xlabel('Epoch')
+        plt.legend(['train acc', 'val acc'], loc='upper left')
+        plt.draw()
+        plt.savefig(results_path + "/accuracy_epoch.png")
+        plt.show()
+
+        plt.figure(3)
+        plt.plot(self.best_history.history['loss'])
+        plt.plot(self.best_history.history['val_loss'])
+        plt.title('Loss vs. Epoch')
+        plt.ylabel('Loss')
+        plt.xlabel('Epoch')
+        plt.legend(['train loss', 'val loss'], loc='upper left')
+        plt.draw()
+        plt.savefig(results_path + "/loss_epoch.png")
         plt.show()
 
     def save_model(self):
@@ -450,7 +482,7 @@ class SingleSpikeAnalyzer:
 
 def main():
     model = SingleSpikeAnalyzer()
-    model.optimize(n_trials=200)
+    model.optimize(n_trials=10)
     model.plot_results()
     model.save_model()
 
