@@ -29,7 +29,7 @@ file_path = os.path.dirname(os.path.realpath(__file__))
 data_path_time = file_path + '/data/single_spike/mouse/'
 data_path_fft = file_path + '/data/single_spike_fft/mouse/'
 data_path_tabular = file_path + '/data/mouse/single_spike_data.csv'
-results_path = file_path + '/results/multimodal'
+results_path = file_path + '/results/single_spike_multimodal'
 
 plt.style.use(file_path + '/plot_style.txt')
 
@@ -334,7 +334,7 @@ class SingleSpikeAnalyzer:
         return max(self.history.history['val_accuracy'])
 
     def optimize(self, n_trials: int, n_jobs: int = 1):
-        study = optuna.create_study(study_name='multimodal', direction='maximize')
+        study = optuna.create_study(study_name='single_spike_multimodal', direction='maximize')
         study.optimize(func=self.objective, n_trials=n_trials, n_jobs=n_jobs, callbacks=[self.callback])
         best_n_filters_t = study.best_params['n_filters_t']
         best_n_filters_f = study.best_params['n_filters_f']

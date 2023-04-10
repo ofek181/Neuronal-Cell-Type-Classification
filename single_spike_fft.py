@@ -24,7 +24,7 @@ tf.get_logger().setLevel('INFO')
 # get directories
 file_path = os.path.dirname(os.path.realpath(__file__))
 data_path = file_path + '/data/single_spike_fft/mouse/'
-results_path = file_path + '/results/conv1d_fft_signal'
+results_path = file_path + '/results/single_spike_fft'
 
 plt.style.use(file_path + '/plot_style.txt')
 
