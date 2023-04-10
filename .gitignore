@@ -3,6 +3,6 @@ cell_types
 __pycache__
 .DS_Store
 data
-results/conv1d_fft_signal/model
-results/conv1d_raw_signal/model
-results/multimodal/model
+results/single_spike_fft/model
+results/single_spike_time/model
+results/single_spike_multimodal/model
