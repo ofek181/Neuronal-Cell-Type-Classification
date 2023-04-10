@@ -6,9 +6,8 @@ import tensorflow as tf
 import matplotlib.pyplot as plt
 import seaborn as sns
 from glob import glob
-
 import tensorflow.python.keras.callbacks
-from scipy import signal
+from scipy.interpolate import interp1d
 from tensorflow.keras.layers import Conv1D, Dense, Flatten, Input, MaxPooling1D, concatenate
 from tensorflow.keras.models import Model
 from sklearn.model_selection import train_test_split
@@ -62,17 +61,18 @@ class SingleSpikeAnalyzer:
         irrelevant_columns = ['transgenic_line', 'neurotransmitter', 'dendrite_type', 'reporter_status', 'layer']
         db = db.drop([x for x in irrelevant_columns if x in db.columns], axis=1, errors='ignore')
         n = 0
-        # we decimate arrays of size 600 to size 150.
-        # another option is to interpolate arrays of size 150 to size 600.
-        # after trying interpolation, results did not improve and training time lengthen.
-        # so we stuck around with decimation and not interpolation.
         for idx, directory in enumerate(directories):
             # raw signal, action potential voltage vs time in milliseconds.
             files_time = glob(data_path_time + directory + '/*')
             arrays = [np.load(f) for f in files_time]
             for i, array in enumerate(arrays):
-                if len(array) == 600:
-                    array = signal.decimate(array, 4)
+                if len(array) == 150:
+                    x = np.arange(0, 150)
+                    f = interp1d(x, array)
+                    x_new = np.linspace(0, 149, 600)
+                    array_new = f(x_new)
+                    array = array_new
+
 
                 features_time.append(array)
                 labels_time.append(idx)
@@ -85,11 +85,16 @@ class SingleSpikeAnalyzer:
                     freq = np.fft.fftfreq(array.size, d=1. / 200000)
                     max_freq = int(freq.size / 2)
                     array = np.abs(array[0: max_freq])
-                    array = signal.decimate(array, 4)
                 else:  # sampled at 50khz (after 2016)
                     freq = np.fft.fftfreq(array.size, d=1. / 50000)
                     max_freq = int(freq.size / 2)
                     array = np.abs(array[0: max_freq])
+
+                    x = np.arange(0, 75)
+                    f = interp1d(x, array)
+                    x_new = np.linspace(0, 74, 300)
+                    array_new = f(x_new)
+                    array = array_new
 
                 features_fft.append(array)
                 labels_fft.append(idx)
@@ -168,8 +173,8 @@ class SingleSpikeAnalyzer:
                      n_dense_layers_t: int = 2,
                      n_dense_layers_f: int = 2,
                      n_dense_layers_tab: int = 2,
-                     input_size_t: int = 150,
-                     input_size_f: int = 75,
+                     input_size_t: int = 600,
+                     input_size_f: int = 300,
                      input_size_tab: int = 11,
                      kernel_size_t: int = 3,
                      kernel_size_f: int = 3,
@@ -485,12 +490,12 @@ class SingleSpikeAnalyzer:
 
 def main():
     model = SingleSpikeAnalyzer()
-    model.optimize(n_trials=10)
+    model.optimize(n_trials=100)
     model.plot_results()
     model.save_model()
 
 
 if __name__ == '__main__':
-    device = get_device()
-    with tf.device(device):
-        main()
+    # device = get_device()
+    # with tf.device(device):
+    main()
