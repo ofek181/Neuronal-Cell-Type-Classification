@@ -12,7 +12,6 @@ from keras.regularizers import l2
 from sklearn.model_selection import train_test_split
 import matplotlib.pyplot as plt
 import seaborn as sns
-from sklearn.preprocessing import StandardScaler
 from sklearn.metrics import confusion_matrix
 from sklearn.preprocessing import normalize
 from sklearn.metrics import accuracy_score
@@ -127,7 +126,7 @@ class TabularAnalyzer:
         cmap = sns.cubehelix_palette(light=0.9, as_cmap=True)
         cm_normalized = df_cm.div(df_cm.sum(axis=0), axis=1)
         sns.heatmap(cm_normalized, cbar=False, annot=True, cmap=cmap, square=True, fmt='.1%', annot_kws={'size': 10})
-        plt.title('Transgenic Lines FeedForward Neural Network Confusion Matrix')
+        plt.title('Single spike tabular classification')
         plt.tight_layout()
         plt.draw()
         return accuracy
@@ -188,10 +187,10 @@ class TabularAnalyzer:
         pass
 
 
-def grid_search(data: pd.DataFrame) -> TabularAnalyzer:
+def grid_search() -> TabularAnalyzer:
     layers = [2, 3]
-    l2s = [0.01, 0.0001]
-    denses = [[10, 10, 10], [12, 8, 6], [11, 7, 5]]
+    l2s = [0.001]
+    denses = [[10, 10, 10], [11, 8, 6], [11, 7, 5]]
     activations = [['relu', 'relu', 'relu']]
     lrs = [0.001]
     drops = [[0.3, 0.3, 0.3], [0.1, 0.1, 0.1]]
@@ -212,36 +211,19 @@ def grid_search(data: pd.DataFrame) -> TabularAnalyzer:
                                                               learning_rate=lr, drop_rate=drop, batch_size=bs,
                                                               n_epochs=epoch, optimizer=optim)
                                         accuracy = clf.train_and_test()
-                                        print(accuracy)
-                                        # if accuracy > 0.9:
-                                        #     return clf
+                                        if accuracy > 0.82:
+                                            return clf
                                         plt.close(1)
                                         plt.close(2)
 
 
-# def train(data: pd.DataFrame) -> DNNClassifier:
-#     """
-#     :param data: data to be trained on
-#     :return: a trained DNNClassifier model
-#     """
-#     clf = DNNClassifier(db=data, n_layers=4, weight_decay=0.0001, dense_size=[20, 256, 256, 64],
-#                         activation_function=['swish', 'swish', 'swish', 'swish'], learning_rate=0.001,
-#                         drop_rate=[0.5, 0.5, 0.5, 0.5], batch_size=32, n_epochs=1024, optimizer='adam')
-#     clf.train_and_test()
-#     return clf
-
-
 def main():
-    clf = grid_search(data)
+    clf = grid_search()
     clf.model.save(filepath=results_path + '/model')
     plt.show()
-    # print("==============================================")
-    # print("Training:")
-    # clf = train(data)
-    # plt.show()
 
 
 if __name__ == '__main__':
-    # device = get_device()
-    # with tf.device(device):
-    main()
+    device = get_device()
+    with tf.device(device):
+        main()
