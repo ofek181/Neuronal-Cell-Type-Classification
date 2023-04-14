@@ -238,8 +238,8 @@ class SingleSpikeAnalyzer:
         model = Model(inputs=[input_t, input_f, input_tab], outputs=out)
         return model
 
-    def train_and_test(self, optimizer: str = 'adam', batch_size: int = 16,
-                       epochs: int = 50) -> tensorflow.keras.callbacks.History:
+    def train(self, optimizer: str = 'adam',
+              batch_size: int = 16, epochs: int = 50) -> tensorflow.keras.callbacks.History:
         # compile the model
         self.model.compile(optimizer=optimizer,
                            loss='categorical_crossentropy',
@@ -272,12 +272,39 @@ class SingleSpikeAnalyzer:
         self.model.load_weights(checkpoint_filepath)
         return history
 
-    def callback(self, study, trial):
+    def test(self) -> list:
+        return self.best_model.evaluate(x=[self.x_test_time, self.x_test_fft, self.x_test_tab],
+                                        y=self.y_test_time, verbose=2)
+
+    def plot_confusion_matrix(self) -> None:
+        # plot the confusion matrix
+        y_pred = np.argmax(self.best_model.predict([self.x_test_time, self.x_test_fft, self.x_test_tab]), axis=1)
+        y_true = np.argmax(self.y_test_time, axis=1)
+
+        def reverse_labels(tup: tuple) -> list:
+            return [class_names[x] for x in tup]
+
+        y_true_labeled, y_pred_labeled = reverse_labels(tuple(y_true)), reverse_labels(tuple(y_pred))
+        matrix = confusion_matrix(y_true_labeled, y_pred_labeled)
+        df_cm = pd.DataFrame(matrix, columns=np.unique(y_true_labeled), index=np.unique(y_true_labeled))
+        # df_cm.index.name = 'Actual'
+        # df_cm.columns.name = 'Predicted'
+        plt.figure(1)
+        cmap = sns.cubehelix_palette(light=0.9, as_cmap=True)
+        cm_normalized = df_cm.div(df_cm.sum(axis=0), axis=1)
+        sns.heatmap(cm_normalized, cbar=False, annot=True, cmap=cmap, square=True, fmt='.1%', annot_kws={'size': 10})
+        plt.title('Multimodal Classification')
+        plt.tight_layout()
+        plt.draw()
+        plt.savefig(results_path + "/confusion_matrix.png")
+        plt.show()
+
+    def callback(self, study, trial) -> None:
         if study.best_trial == trial:
             self.best_model = self.model
             self.best_history = self.history
 
-    def objective(self, trial):
+    def objective(self, trial) -> float:
         n_filters_t = trial.suggest_categorical("n_filters_t", ([256, 256, 256],
                                                                 [128, 128, 128],
                                                                 [64, 64, 64],
@@ -333,10 +360,10 @@ class SingleSpikeAnalyzer:
                                        activation_tab=activation_tab,
                                        concatenate_size=concatenate_size)
 
-        self.history = self.train_and_test(optimizer=optimizer, batch_size=batch_size, epochs=epochs)
+        self.history = self.train(optimizer=optimizer, batch_size=batch_size, epochs=epochs)
         return max(self.history.history['val_accuracy'])
 
-    def optimize(self, n_trials: int, n_jobs: int = 1):
+    def optimize(self, n_trials: int, n_jobs: int = 1) -> None:
         study = optuna.create_study(study_name='single_spike_multimodal', direction='maximize')
         study.optimize(func=self.objective, n_trials=n_trials, n_jobs=n_jobs, callbacks=[self.callback])
         best_n_filters_t = study.best_params['n_filters_t']
@@ -363,8 +390,7 @@ class SingleSpikeAnalyzer:
         best_batch_size = study.best_params['batch_size']
         best_epochs = study.best_params['epochs']
 
-        results = self.best_model.evaluate(x=[self.x_test_time, self.x_test_fft, self.x_test_tab],
-                                           y=self.y_test_time, verbose=2)
+        results = self.test()
 
         print("********* Trial Finished *********")
         print("Time Sequence Neural Network: ")
@@ -431,29 +457,7 @@ class SingleSpikeAnalyzer:
                                                  best_concatenate_size, best_optimizer, best_batch_size,
                                                  best_epochs, results[0], results[1]))
 
-    def plot_results(self):
-        # plot the confusion matrix
-        y_pred = np.argmax(self.best_model.predict([self.x_test_time, self.x_test_fft, self.x_test_tab]), axis=1)
-        y_true = np.argmax(self.y_test_time, axis=1)
-
-        def reverse_labels(tup: tuple) -> list:
-            return [class_names[x] for x in tup]
-
-        y_true_labeled, y_pred_labeled = reverse_labels(tuple(y_true)), reverse_labels(tuple(y_pred))
-        matrix = confusion_matrix(y_true_labeled, y_pred_labeled)
-        df_cm = pd.DataFrame(matrix, columns=np.unique(y_true_labeled), index=np.unique(y_true_labeled))
-        # df_cm.index.name = 'Actual'
-        # df_cm.columns.name = 'Predicted'
-        plt.figure(1)
-        cmap = sns.cubehelix_palette(light=0.9, as_cmap=True)
-        cm_normalized = df_cm.div(df_cm.sum(axis=0), axis=1)
-        sns.heatmap(cm_normalized, cbar=False, annot=True, cmap=cmap, square=True, fmt='.1%', annot_kws={'size': 10})
-        plt.title('Multimodal Classification')
-        plt.tight_layout()
-        plt.draw()
-        plt.savefig(results_path + "/confusion_matrix.png")
-        plt.show()
-
+    def plot_history(self) -> None:
         plt.figure(2)
         plt.plot(self.best_history.history['accuracy'])
         plt.plot(self.best_history.history['val_accuracy'])
@@ -476,21 +480,40 @@ class SingleSpikeAnalyzer:
         plt.savefig(results_path + "/loss_epoch.png")
         plt.show()
 
-    def save_model(self):
+    def save_model(self) -> None:
         """
         save the best model to path.
         """
         self.best_model.save(filepath=results_path + '/model')
 
+    def load_model(self) -> None:
+        """
+        load the best model from path.
+        """
+        self.best_model = tf.keras.models.load_model(filepath=results_path + '/model')
+
+
+def train_model():
+    SSA = SingleSpikeAnalyzer()
+    SSA.optimize(n_trials=10)
+    SSA.plot_confusion_matrix()
+    SSA.plot_history()
+    SSA.save_model()
+
+
+def test_model():
+    SSA = SingleSpikeAnalyzer()
+    SSA.load_model()
+    results = SSA.test()
+    SSA.plot_confusion_matrix()
+
 
 def main():
-    model = SingleSpikeAnalyzer()
-    model.optimize(n_trials=10)
-    model.plot_results()
-    model.save_model()
+    # train_model()
+    test_model()
 
 
 if __name__ == '__main__':
-    device = get_device()
-    with tf.device(device):
-        main()
+    # device = get_device()
+    # with tf.device(device):
+    main()
