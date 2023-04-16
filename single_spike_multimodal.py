@@ -48,7 +48,7 @@ class SingleSpikeAnalyzer:
         self.history, self.best_history = None, None
 
     @staticmethod
-    def process_data(test_size: float = 0.2, seed: int = 42) -> tuple:
+    def process_data(test_size: float = 0.2, seed: int = 13) -> tuple:
         """
         Reads the time series data, the FFT data and tabular data, normalizes each domain and splits into train/test.
         """
@@ -69,6 +69,7 @@ class SingleSpikeAnalyzer:
         for idx, directory in enumerate(directories):
             # raw signal, action potential voltage vs time in milliseconds.
             files_time = glob(data_path_time + directory + '/*')
+            files_time = sorted(files_time)  # make files reader the same in server and client
             arrays = [np.load(f) for f in files_time]
             for i, array in enumerate(arrays):
                 if len(array) == 600:
@@ -79,6 +80,7 @@ class SingleSpikeAnalyzer:
 
             # FFT signal of the original sequence.
             files_fft = glob(data_path_fft + directory + '/*')
+            files_fft = sorted(files_fft)  # make files reader the same in server and client
             arrays = [np.load(f) for f in files_fft]
             for array in arrays:
                 if len(array) == 600:  # sampled at 200khz (before 2016)
@@ -495,7 +497,7 @@ class SingleSpikeAnalyzer:
 
 def train_model():
     SSA = SingleSpikeAnalyzer()
-    SSA.optimize(n_trials=10)
+    SSA.optimize(n_trials=400)
     SSA.plot_confusion_matrix()
     SSA.plot_history()
     SSA.save_model()
@@ -509,11 +511,11 @@ def test_model():
 
 
 def main():
-    # train_model()
+    train_model()
     test_model()
 
 
 if __name__ == '__main__':
-    # device = get_device()
-    # with tf.device(device):
-    main()
+    device = get_device()
+    with tf.device(device):
+        main()
