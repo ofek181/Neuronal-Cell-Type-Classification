@@ -511,7 +511,7 @@ def test_model():
 
 
 def main():
-    train_model()
+    # train_model()
     test_model()
 
 
