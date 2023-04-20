@@ -24,8 +24,8 @@ def calculate_metrics_multiclass(y_true: np.ndarray, y_pred: np.ndarray, y_pred_
     :return: accuracy, f1 score, precision, recall and roc auc score.
     """
     accuracy = accuracy_score(y_true, y_pred)
-    f1 = f1_score(y_true, y_pred, average='micro')
-    precision = precision_score(y_true, y_pred, average='micro')
-    recall = recall_score(y_true, y_pred, average='micro')
+    f1 = f1_score(y_true, y_pred, average='macro')
+    precision = precision_score(y_true, y_pred, average='macro')
+    recall = recall_score(y_true, y_pred, average='macro')
     roc_auc = roc_auc_score(y_true, y_pred_proba, multi_class='ovr')
     return accuracy, f1, precision, recall, roc_auc
