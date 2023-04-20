@@ -8,7 +8,7 @@ from sklearn.svm import SVC
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import StandardScaler, LabelEncoder
 from sklearn.metrics import confusion_matrix
-from sklearn.metrics import accuracy_score, f1_score, precision_score, recall_score
+from helper_functions import calculate_metrics_multiclass
 
 # get directories
 dir_path = os.path.dirname(os.path.realpath(__file__))
@@ -33,7 +33,7 @@ class SVClassifier:
         self.encode()
         self.scale()
         self.x_train, self.y_train, self.x_test, self.y_test = self.split_train_test()
-        self.model = SVC(random_state=1)
+        self.model = SVC(random_state=1, probability=True)
 
     def train(self) -> None:
         """
@@ -47,15 +47,14 @@ class SVClassifier:
         """
         print("SVC")
         y_pred = self.model.predict(self.x_test)
-        accuracy = accuracy_score(self.y_test, y_pred)
-        f1 = f1_score(self.y_test, y_pred, average='micro')
-        precision = precision_score(self.y_test, y_pred, average='micro')
-        recall = recall_score(self.y_test, y_pred, average='micro')
+        y_pred_proba = self.model.predict_proba(self.x_test)
+        accuracy, f1, precision, recall, roc_auc = calculate_metrics_multiclass(self.y_test, y_pred, y_pred_proba)
         print('--------------------------------------------------------------')
         print("Accuracy: " + str(accuracy))
         print("F1 Score: " + str(f1))
         print("Precision: " + str(precision))
         print("Recall: " + str(recall))
+        print("ROC AUC: " + str(roc_auc))
 
     def scale(self) -> None:
         """
