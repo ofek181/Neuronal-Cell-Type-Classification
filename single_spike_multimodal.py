@@ -1,13 +1,13 @@
+import warnings
 import os
 import optuna
 import numpy as np
 import pandas as pd
+import seaborn as sns
 import tensorflow as tf
 import matplotlib.pyplot as plt
-import seaborn as sns
-from glob import glob
-
 import tensorflow.python.keras.callbacks
+from glob import glob
 from scipy import signal
 from tensorflow.keras.layers import Conv1D, Dense, Flatten, Input, MaxPooling1D, concatenate
 from tensorflow.keras.models import Model
@@ -16,9 +16,9 @@ from sklearn.utils.class_weight import compute_class_weight
 from sklearn.metrics import confusion_matrix
 from keras.utils.np_utils import to_categorical
 from sklearn.preprocessing import normalize
-
 from gpu_check import get_device
-import warnings
+from helper_functions import calculate_metrics_multiclass
+
 warnings.filterwarnings('ignore')
 
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
@@ -48,7 +48,7 @@ class SingleSpikeAnalyzer:
         self.history, self.best_history = None, None
 
     @staticmethod
-    def process_data(test_size: float = 0.2, seed: int = 13) -> tuple:
+    def process_data(test_size: float = 0.2, seed: int = 42) -> tuple:
         """
         Reads the time series data, the FFT data and tabular data, normalizes each domain and splits into train/test.
         """
@@ -249,12 +249,13 @@ class SingleSpikeAnalyzer:
 
         # create checkpoint so that the best epoch is saved
         checkpoint_filepath = '/tmp/checkpoint'
-        model_checkpoint_callback = tf.keras.callbacks.ModelCheckpoint(
+        checkpoint = tf.keras.callbacks.ModelCheckpoint(
             filepath=checkpoint_filepath,
             save_weights_only=True,
             monitor='val_accuracy',
             mode='max',
             save_best_only=True)
+        early_stopping = tf.keras.callbacks.EarlyStopping(monitor='val_accuracy', min_delta=0.00001, patience=5)
 
         # compute class weight
         y_integers = np.argmax(self.y_train_time, axis=1)
@@ -267,26 +268,27 @@ class SingleSpikeAnalyzer:
                                                                                          self.x_test_fft,
                                                                                          self.x_test_tab],
                                                                                         self.y_test_time),
-                                 shuffle=True, callbacks=[model_checkpoint_callback],
+                                 shuffle=True, callbacks=[checkpoint, early_stopping],
                                  class_weight=d_class_weights, verbose=0)
 
         # The best model weights are loaded into the model
         self.model.load_weights(checkpoint_filepath)
         return history
 
-    def test(self) -> list:
-        return self.best_model.evaluate(x=[self.x_test_time, self.x_test_fft, self.x_test_tab],
-                                        y=self.y_test_time, verbose=2)
-
-    def plot_confusion_matrix(self) -> None:
-        # plot the confusion matrix
-        y_pred = np.argmax(self.best_model.predict([self.x_test_time, self.x_test_fft, self.x_test_tab]), axis=1)
+    def test(self) -> tuple:
+        y_pred_proba = self.model.predict(x=[self.x_test_time, self.x_test_fft, self.x_test_tab], verbose=0)
+        y_pred = np.argmax(y_pred_proba, axis=1)
         y_true = np.argmax(self.y_test_time, axis=1)
+        return calculate_metrics_multiclass(y_true, y_pred, y_pred_proba)
 
-        def reverse_labels(tup: tuple) -> list:
-            return [class_names[x] for x in tup]
+    @staticmethod
+    def _reverse_labels(tup: tuple) -> list:
+        return [class_names[x] for x in tup]
 
-        y_true_labeled, y_pred_labeled = reverse_labels(tuple(y_true)), reverse_labels(tuple(y_pred))
+    @staticmethod
+    def plot_confusion_matrix(y_pred, y_true) -> None:
+        y_true_labeled = SingleSpikeAnalyzer._reverse_labels(tuple(y_true))
+        y_pred_labeled = SingleSpikeAnalyzer._reverse_labels(tuple(y_pred))
         matrix = confusion_matrix(y_true_labeled, y_pred_labeled)
         df_cm = pd.DataFrame(matrix, columns=np.unique(y_true_labeled), index=np.unique(y_true_labeled))
         # df_cm.index.name = 'Actual'
@@ -363,7 +365,8 @@ class SingleSpikeAnalyzer:
                                        concatenate_size=concatenate_size)
 
         self.history = self.train(optimizer=optimizer, batch_size=batch_size, epochs=epochs)
-        return max(self.history.history['val_accuracy'])
+        accuracy, f1, precision, recall, roc_auc = self.test()
+        return f1
 
     def optimize(self, n_trials: int, n_jobs: int = 1) -> None:
         study = optuna.create_study(study_name='single_spike_multimodal', direction='maximize')
@@ -392,7 +395,7 @@ class SingleSpikeAnalyzer:
         best_batch_size = study.best_params['batch_size']
         best_epochs = study.best_params['epochs']
 
-        results = self.test()
+        accuracy, f1, precision, recall, roc_auc = self.test()
 
         print("********* Trial Finished *********")
         print("Time Sequence Neural Network: ")
@@ -448,8 +451,11 @@ class SingleSpikeAnalyzer:
                 "best_optimizer: {}\n"
                 "best_batch_size: {}\n"
                 "best_epochs: {}\n"
-                "Validation loss: {}\n"
-                "Validation accuracy: {}".format(best_n_filters_t, best_n_filters_t,  best_n_units_t, best_n_units_f,
+                "Test accuracy: {}\n"
+                "Test f1: {}\n"
+                "Test precision: {}\n"
+                "Test recall: {}\n"
+                "Test roc auc: {}".format(best_n_filters_t, best_n_filters_t,  best_n_units_t, best_n_units_f,
                                                  best_n_units_tab, best_n_conv1d_layers_t, best_n_conv1d_layers_f,
                                                  best_n_dense_layers_t, best_n_dense_layers_f, best_n_dense_layers_tab,
                                                  best_kernel_size_t, best_kernel_size_f,
@@ -457,7 +463,7 @@ class SingleSpikeAnalyzer:
                                                  best_pool_size_t, best_pool_size_f,
                                                  best_activation_t, best_activation_f, best_activation_tab,
                                                  best_concatenate_size, best_optimizer, best_batch_size,
-                                                 best_epochs, results[0], results[1]))
+                                                 best_epochs, accuracy, f1, precision, recall, roc_auc))
 
     def plot_history(self) -> None:
         plt.figure(2)
@@ -497,8 +503,7 @@ class SingleSpikeAnalyzer:
 
 def train_model():
     SSA = SingleSpikeAnalyzer()
-    SSA.optimize(n_trials=400)
-    SSA.plot_confusion_matrix()
+    SSA.optimize(n_trials=500)
     SSA.plot_history()
     SSA.save_model()
 
@@ -506,12 +511,18 @@ def train_model():
 def test_model():
     SSA = SingleSpikeAnalyzer()
     SSA.load_model()
-    results = SSA.test()
-    SSA.plot_confusion_matrix()
+    y_pred_proba = SSA.best_model.predict(x=[SSA.x_test_time,
+                                             SSA.x_test_fft,
+                                             SSA.x_test_tab])
+    y_pred = np.argmax(y_pred_proba, axis=1)
+    y_true = np.argmax(SSA.y_test_time, axis=1)
+    accuracy, f1, precision, recall, roc_auc = calculate_metrics_multiclass(y_true, y_pred, y_pred_proba)
+    print("Accuracy: {}\nF1: {}\nPrecision: {}\nRecall: {}\nAUC: {}".format(accuracy, f1, precision, recall, roc_auc))
+    SSA.plot_confusion_matrix(y_pred, y_true)
 
 
 def main():
-    # train_model()
+    train_model()
     test_model()
 
 
