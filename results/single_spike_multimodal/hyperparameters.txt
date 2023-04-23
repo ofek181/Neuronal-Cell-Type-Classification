@@ -1,25 +1,28 @@
 best_n_filters_t: [128, 128, 128]
 best_n_filters_f: [128, 128, 128]
 best_n_units_t: [128, 64, 32]
-best_n_units_f: [256, 128, 64]
+best_n_units_f: [128, 64, 32]
 best_n_units_tab: [10, 10]
 best_n_conv1d_layers_t: 3
-best_n_conv1d_layers_f: 3
+best_n_conv1d_layers_f: 2
 best_n_dense_layers_t: 1
-best_n_dense_layers_f: 1
+best_n_dense_layers_f: 2
 best_n_dense_layers_tab: 1
-best_kernel_size_t: 6
-best_kernel_size_f: 3
-best_stride_size_t: 2
-best_stride_size_f: 1
-best_pool_size_t: 1
-best_pool_size_f: 2
+best_kernel_size_t: 4
+best_kernel_size_f: 5
+best_stride_size_t: 1
+best_stride_size_f: 3
+best_pool_size_t: 2
+best_pool_size_f: 1
 best_activation_t: swish
-best_activation_f: relu
-best_activation_tab: sigmoid
+best_activation_f: tanh
+best_activation_tab: selu
 best_out_size: 10
 best_optimizer: rmsprop
 best_batch_size: 32
 best_epochs: 200
-Validation loss: 0.4904145300388336
-Validation accuracy: 0.8631578683853149
+Test accuracy: 0.8631578947368421
+Test f1: 0.7892944929167839
+Test precision: 0.7937208111121155
+Test recall: 0.7969341897432946
+Test roc auc: 0.9543984851607206

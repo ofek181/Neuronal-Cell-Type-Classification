@@ -255,7 +255,7 @@ class SingleSpikeAnalyzer:
             monitor='val_accuracy',
             mode='max',
             save_best_only=True)
-        early_stopping = tf.keras.callbacks.EarlyStopping(monitor='val_accuracy', min_delta=0.00001, patience=5)
+        early_stopping = tf.keras.callbacks.EarlyStopping(monitor='val_loss', min_delta=0.00001, patience=15)
 
         # compute class weight
         y_integers = np.argmax(self.y_train_time, axis=1)
@@ -503,7 +503,7 @@ class SingleSpikeAnalyzer:
 
 def train_model():
     SSA = SingleSpikeAnalyzer()
-    SSA.optimize(n_trials=500)
+    SSA.optimize(n_trials=250)
     SSA.plot_history()
     SSA.save_model()
 
