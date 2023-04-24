@@ -505,7 +505,7 @@ class SingleSpikeAnalyzer:
 
 def train_model():
     SSA = SingleSpikeAnalyzer()
-    SSA.optimize(n_trials=250)
+    SSA.optimize(n_trials=300)
     SSA.plot_history()
     SSA.save_model()
 
@@ -525,7 +525,7 @@ def test_model():
 
 
 def main():
-    # train_model()
+    # train_model()  # uncomment if you wish to train a new model
     test_model()
 
 
