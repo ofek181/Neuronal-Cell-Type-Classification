@@ -1,5 +1,5 @@
 best_n_filters_t: [128, 128, 128]
-best_n_filters_f: [128, 128, 128]
+best_n_filters_f: [256, 256]
 best_n_units_t: [128, 64, 32]
 best_n_units_f: [128, 64, 32]
 best_n_units_tab: [10, 10]

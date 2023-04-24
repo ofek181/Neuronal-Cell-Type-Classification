@@ -457,7 +457,7 @@ class SingleSpikeAnalyzer:
                 "Test f1: {}\n"
                 "Test precision: {}\n"
                 "Test recall: {}\n"
-                "Test roc auc: {}".format(best_n_filters_t, best_n_filters_t,  best_n_units_t, best_n_units_f,
+                "Test roc auc: {}".format(best_n_filters_t, best_n_filters_f,  best_n_units_t, best_n_units_f,
                                                  best_n_units_tab, best_n_conv1d_layers_t, best_n_conv1d_layers_f,
                                                  best_n_dense_layers_t, best_n_dense_layers_f, best_n_dense_layers_tab,
                                                  best_kernel_size_t, best_kernel_size_f,
