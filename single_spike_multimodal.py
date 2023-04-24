@@ -275,12 +275,6 @@ class SingleSpikeAnalyzer:
         self.model.load_weights(checkpoint_filepath)
         return history
 
-    def test(self) -> tuple:
-        y_pred_proba = self.model.predict(x=[self.x_test_time, self.x_test_fft, self.x_test_tab], verbose=0)
-        y_pred = np.argmax(y_pred_proba, axis=1)
-        y_true = np.argmax(self.y_test_time, axis=1)
-        return calculate_metrics_multiclass(y_true, y_pred, y_pred_proba)
-
     @staticmethod
     def _reverse_labels(tup: tuple) -> list:
         return [class_names[x] for x in tup]
@@ -365,7 +359,10 @@ class SingleSpikeAnalyzer:
                                        concatenate_size=concatenate_size)
 
         self.history = self.train(optimizer=optimizer, batch_size=batch_size, epochs=epochs)
-        accuracy, f1, precision, recall, roc_auc = self.test()
+        y_pred_proba = self.model.predict(x=[self.x_test_time, self.x_test_fft, self.x_test_tab], verbose=0)
+        y_pred = np.argmax(y_pred_proba, axis=1)
+        y_true = np.argmax(self.y_test_time, axis=1)
+        accuracy, f1, precision, recall, roc_auc = calculate_metrics_multiclass(y_true, y_pred, y_pred_proba)
         return f1
 
     def optimize(self, n_trials: int, n_jobs: int = 1) -> None:
@@ -395,7 +392,12 @@ class SingleSpikeAnalyzer:
         best_batch_size = study.best_params['batch_size']
         best_epochs = study.best_params['epochs']
 
-        accuracy, f1, precision, recall, roc_auc = self.test()
+        y_pred_proba = self.best_model.predict(x=[self.x_test_time,
+                                                  self.x_test_fft,
+                                                  self.x_test_tab], verbose=0)
+        y_pred = np.argmax(y_pred_proba, axis=1)
+        y_true = np.argmax(self.y_test_time, axis=1)
+        accuracy, f1, precision, recall, roc_auc = calculate_metrics_multiclass(y_true, y_pred, y_pred_proba)
 
         print("********* Trial Finished *********")
         print("Time Sequence Neural Network: ")
@@ -511,9 +513,10 @@ def train_model():
 def test_model():
     SSA = SingleSpikeAnalyzer()
     SSA.load_model()
+    SSA.best_model.summary()
     y_pred_proba = SSA.best_model.predict(x=[SSA.x_test_time,
                                              SSA.x_test_fft,
-                                             SSA.x_test_tab])
+                                             SSA.x_test_tab], verbose=0)
     y_pred = np.argmax(y_pred_proba, axis=1)
     y_true = np.argmax(SSA.y_test_time, axis=1)
     accuracy, f1, precision, recall, roc_auc = calculate_metrics_multiclass(y_true, y_pred, y_pred_proba)
@@ -522,7 +525,7 @@ def test_model():
 
 
 def main():
-    train_model()
+    # train_model()
     test_model()
 
 
