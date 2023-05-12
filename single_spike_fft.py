@@ -13,6 +13,7 @@ from sklearn.model_selection import train_test_split
 from sklearn.utils.class_weight import compute_class_weight
 from sklearn.metrics import confusion_matrix
 from keras.utils.np_utils import to_categorical
+from helper_functions import calculate_metrics_multiclass
 
 from gpu_check import get_device
 import warnings
@@ -35,7 +36,7 @@ class FrequencyAnalyzer:
     def __init__(self) -> None:
         self.x_train, self.x_test, self.y_train, self.y_test = self.process_data()
         self.model, self.best_model = self.create_model(), None
-        self.history = None
+        self.history, self.best_history = None, None
 
     @staticmethod
     def process_data(test_size: float = 0.2):
@@ -45,6 +46,7 @@ class FrequencyAnalyzer:
         labels = []
         for idx, directory in enumerate(directories):
             files = glob(data_path + directory + '/*')
+            files = sorted(files)
             arrays = [np.load(f) for f in files]
             for array in arrays:
                 if len(array) == 600:  # sampled at 200khz (before 2016)
@@ -108,7 +110,7 @@ class FrequencyAnalyzer:
 
         return Model(inputs=inputs, outputs=outputs)
 
-    def train_and_test(self, optimizer: str = 'adam', batch_size: int = 16,
+    def train(self, optimizer: str = 'adam', batch_size: int = 16,
                        epochs: int = 50):
         # compile the model
         self.model.compile(optimizer=optimizer,
@@ -117,12 +119,13 @@ class FrequencyAnalyzer:
 
         # create checkpoint so that the best epoch is saved
         checkpoint_filepath = '/tmp/checkpoint'
-        model_checkpoint_callback = tf.keras.callbacks.ModelCheckpoint(
+        checkpoint = tf.keras.callbacks.ModelCheckpoint(
             filepath=checkpoint_filepath,
             save_weights_only=True,
             monitor='val_accuracy',
             mode='max',
             save_best_only=True)
+        early_stopping = tf.keras.callbacks.EarlyStopping(monitor='val_loss', min_delta=0.00001, patience=15)
 
         # compute class weight
         y_integers = np.argmax(self.y_train, axis=1)
@@ -131,9 +134,9 @@ class FrequencyAnalyzer:
 
         # fit the model
         history = self.model.fit(x=self.x_train, y=self.y_train,
-                                      batch_size=batch_size, epochs=epochs,
-                                      validation_data=(self.x_test, self.y_test), shuffle=True,
-                                      callbacks=[model_checkpoint_callback], class_weight=d_class_weights, verbose=0)
+                                 batch_size=batch_size, epochs=epochs,
+                                 validation_data=(self.x_test, self.y_test), shuffle=True,
+                                 callbacks=[checkpoint, early_stopping], class_weight=d_class_weights, verbose=0)
 
         # The best model weights are loaded into the model
         self.model.load_weights(checkpoint_filepath)
@@ -142,6 +145,7 @@ class FrequencyAnalyzer:
     def callback(self, study, trial):
         if study.best_trial == trial:
             self.best_model = self.model
+            self.best_history = self.history
 
     def objective(self, trial):
         n_filters = trial.suggest_categorical("n_filters", ([256, 256, 256],
@@ -170,8 +174,12 @@ class FrequencyAnalyzer:
                                        pool_size=pool_size,
                                        activation=activation)
 
-        history = self.train_and_test(optimizer=optimizer, batch_size=batch_size, epochs=epochs)
-        return max(history.history['val_accuracy'])
+        self.history = self.train(optimizer=optimizer, batch_size=batch_size, epochs=epochs)
+        y_pred_proba = self.model.predict(x=self.x_test, verbose=0)
+        y_pred = np.argmax(y_pred_proba, axis=1)
+        y_true = np.argmax(self.y_test, axis=1)
+        accuracy, f1, precision, recall, roc_auc = calculate_metrics_multiclass(y_true, y_pred, y_pred_proba)
+        return f1
 
     def optimize(self, n_trials: int, n_jobs: int = 1):
         study = optuna.create_study(study_name='cnn_freq', direction='maximize')
@@ -189,6 +197,10 @@ class FrequencyAnalyzer:
         best_epochs = study.best_params['epochs']
 
         results = self.best_model.evaluate(x=self.x_test, y=self.y_test, verbose=2)
+        y_pred_proba = self.best_model.predict(x=self.x_test, verbose=0)
+        y_pred = np.argmax(y_pred_proba, axis=1)
+        y_true = np.argmax(self.y_test, axis=1)
+        accuracy, f1, precision, recall, roc_auc = calculate_metrics_multiclass(y_true, y_pred, y_pred_proba)
 
         print("********* Trial Finished *********")
         print("best_n_filters: {}".format(best_n_filters))
@@ -216,17 +228,17 @@ class FrequencyAnalyzer:
                 "best_optimizer: {}\n"
                 "best_batch_size: {}\n"
                 "best_epochs: {}\n"
-                "Validation loss: {}\n"
-                "Validation accuracy: {}".format(best_n_filters, best_n_units, best_n_conv1d_layers,
+                "Test accuracy: {}\n"
+                "Test f1: {}\n"
+                "Test precision: {}\n"
+                "Test recall: {}\n"
+                "Test roc auc: {}".format(best_n_filters, best_n_units, best_n_conv1d_layers,
                                                  best_n_dense_layers, best_kernel_size, best_stride_size,
                                                  best_pool_size, best_activation, best_optimizer, best_batch_size,
-                                                 best_epochs, results[0], results[1]))
+                                                 best_epochs, accuracy, f1, precision, recall, roc_auc))
 
-    def plot_results(self):
-        # plot the confusion matrix
-        y_pred = np.argmax(self.best_model.predict(self.x_test), axis=1)
-        y_true = np.argmax(self.y_test, axis=1)
-
+    @staticmethod
+    def plot_cm(y_pred, y_true):
         def reverse_labels(tup: tuple) -> list:
             return [class_names[x] for x in tup]
 
@@ -252,12 +264,64 @@ class FrequencyAnalyzer:
         """
         self.best_model.save(filepath=results_path + '/model')
 
+    def load_model(self) -> None:
+        """
+        load the best model from path.
+        """
+        self.best_model = tf.keras.models.load_model(filepath=results_path + '/model')
 
-def main():
+    def plot_history(self) -> None:
+        plt.figure(2)
+        plt.plot(self.best_history.history['accuracy'])
+        plt.plot(self.best_history.history['val_accuracy'])
+        plt.title('Accuracy vs. Epoch')
+        plt.ylabel('Accuracy')
+        plt.xlabel('Epoch')
+        plt.legend(['train acc', 'val acc'], loc='upper left')
+        plt.draw()
+        plt.savefig(results_path + "/accuracy_epoch.png")
+        plt.show()
+
+        plt.figure(3)
+        plt.plot(self.best_history.history['loss'])
+        plt.plot(self.best_history.history['val_loss'])
+        plt.title('Loss vs. Epoch')
+        plt.ylabel('Loss')
+        plt.xlabel('Epoch')
+        plt.legend(['train loss', 'val loss'], loc='upper left')
+        plt.draw()
+        plt.savefig(results_path + "/loss_epoch.png")
+        plt.show()
+
+
+def train_model():
     model = FrequencyAnalyzer()
     model.optimize(n_trials=100)
-    model.plot_results()
+    y_pred_proba = model.best_model.predict(x=model.x_test,  verbose=0)
+    y_pred = np.argmax(y_pred_proba, axis=1)
+    y_true = np.argmax(model.y_test, axis=1)
+    accuracy, f1, precision, recall, roc_auc = calculate_metrics_multiclass(y_true, y_pred, y_pred_proba)
+    print("Accuracy: {}\nF1: {}\nPrecision: {}\nRecall: {}\nAUC: {}".format(accuracy, f1, precision, recall, roc_auc))
+    model.plot_cm(y_pred, y_true)
+    model.plot_history()
     model.save_model()
+
+
+def test_model():
+    model = FrequencyAnalyzer()
+    model.load_model()
+    model.best_model.summary()
+    y_pred_proba = model.best_model.predict(x=model.x_test,  verbose=0)
+    y_pred = np.argmax(y_pred_proba, axis=1)
+    y_true = np.argmax(model.y_test, axis=1)
+    accuracy, f1, precision, recall, roc_auc = calculate_metrics_multiclass(y_true, y_pred, y_pred_proba)
+    print("Accuracy: {}\nF1: {}\nPrecision: {}\nRecall: {}\nAUC: {}".format(accuracy, f1, precision, recall, roc_auc))
+    model.plot_cm(y_pred, y_true)
+
+
+def main():
+    train_model()
+    test_model()
 
 
 if __name__ == '__main__':
