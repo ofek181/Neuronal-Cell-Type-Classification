@@ -1,5 +1,6 @@
+import warnings
+warnings.filterwarnings('ignore')
 import os
-import random
 import pandas as pd
 import numpy as np
 import tensorflow as tf
@@ -14,23 +15,15 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 from sklearn.metrics import confusion_matrix
 from sklearn.preprocessing import normalize
-from sklearn.metrics import accuracy_score
 from gpu_check import get_device
+from copy import deepcopy
+from helper_functions import calculate_metrics_multiclass
 
 # get directories
 dir_path = os.path.dirname(os.path.realpath(__file__))
 data = pd.read_csv(dir_path + '/data/mouse/single_spike_data.csv')
 results_path = dir_path + '/results/single_spike_tabular'
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
-
-# Cancel randomness for reproducibility
-os.environ['PYTHONHASHSEED'] = '0'
-tf.random.set_seed(1)
-np.random.seed(1)
-random.seed(1)
-
-
-callbacks = [tf.keras.callbacks.EarlyStopping(patience=10, restore_best_weights=True)]
 
 
 class TabularAnalyzer:
@@ -61,7 +54,8 @@ class TabularAnalyzer:
         self.n_epochs = n_epochs
         self.optimizer = optimizer
         self.n_classes = n_classes
-        self.model = self._create_model()
+        self.model, self.best_model = self._create_model(), None
+        self.history = None
 
     def _create_model(self) -> Sequential:
         """
@@ -76,7 +70,7 @@ class TabularAnalyzer:
         model.add(Dense(self.n_classes, activation='softmax'))
         return model
 
-    def train_and_test(self) -> float:
+    def train(self):
         """
         :return: trains and tests a neural network.
         """
@@ -87,31 +81,19 @@ class TabularAnalyzer:
         if self.optimizer == 'rmsprop':
             opt = RMSprop(learning_rate=self.learning_rate, decay=self.learning_rate / self.n_epochs)
 
+        early_stopping = tf.keras.callbacks.EarlyStopping(monitor='val_loss', min_delta=0.00001,
+                                                          patience=10, restore_best_weights=True)
+
         # Compile model
         self.model.compile(loss='categorical_crossentropy', optimizer=opt, metrics="accuracy")
         # Fit model
-        history = self.model.fit(self.x_train, self.y_train, epochs=self.n_epochs, batch_size=self.batch_size,
-                                 validation_data=(self.x_test, self.y_test), verbose=0, callbacks=callbacks)
-        # Plot history
-        self.plot_history(history)
+        self.history = self.model.fit(self.x_train, self.y_train, epochs=self.n_epochs, batch_size=self.batch_size,
+                                      validation_data=(self.x_test, self.y_test), verbose=0, callbacks=early_stopping)
 
-        # Test model
-        accuracy = self.test(self.x_test, self.y_test)
-        return accuracy
-
-    def test(self, x_test, y_test) -> float:
-        """
-        :param x_test: testing data.
-        :param y_test: true labels of the testing data.
-        :return: loss and accuracy of the model on the testing data.
-        """
-        # Calculate test loss and accuracy
-        predictions = self.model.predict(x_test, verbose=0)
-        y_pred, y_test = np.argmax(predictions, axis=1), np.argmax(y_test, axis=1)
-        accuracy = accuracy_score(y_test, y_pred)
-
-        print('==============================================')
-        print("Accuracy: " + str(accuracy))
+    def test(self):
+        # calculate test loss and accuracy
+        predictions = self.model.predict(self.x_test, verbose=0)
+        y_pred, y_test = np.argmax(predictions, axis=1), np.argmax(self.y_test, axis=1)
 
         def reverse_labels(tup: tuple) -> list:
             return [self.class_names[x] for x in tup]
@@ -128,8 +110,8 @@ class TabularAnalyzer:
         sns.heatmap(cm_normalized, cbar=False, annot=True, cmap=cmap, square=True, fmt='.1%', annot_kws={'size': 10})
         plt.title('Single spike tabular classification')
         plt.tight_layout()
+        plt.savefig(results_path + "/confusion_matrix.png")
         plt.draw()
-        return accuracy
 
     def preprocess_data(self) -> tuple:
         data['transgenic_line'] = pd.Categorical(data['transgenic_line'])
@@ -142,9 +124,10 @@ class TabularAnalyzer:
         db = db.drop([x for x in irrelevant_columns if x in db.columns], axis=1, errors='ignore')
         directories = ['glutamatergic', 'htr3a', 'pvalb', 'sst', 'vip']
         for idx, directory in enumerate(directories):
-            files_time = glob(dir_path + '/data/single_spike/mouse/' + directory + '/*')
+            files = glob(dir_path + '/data/single_spike/mouse/' + directory + '/*')
+            files = sorted(files)
             # tabular features analyzed from the raw data.
-            names = [f[f.rfind('/') + 1:f.rfind('.')] for f in files_time]
+            names = [f[f.rfind('/') + 1:f.rfind('.')] for f in files]
             for name in names:
                 value = db[db['file_name'] == name]
                 tmp = value.drop('file_name', axis=1)
@@ -163,42 +146,67 @@ class TabularAnalyzer:
         # split into train and test
         x_train, x_test, y_train, y_test = train_test_split(features_tabular, labels_tabular,
                                                             test_size=0.2,
-                                                            random_state=7,
+                                                            random_state=42,
                                                             shuffle=True)
         return x_train, x_test, y_train, y_test
 
-    @staticmethod
-    def plot_history(history) -> None:
-        """
-        :param history: history of the training process.
-        :return: plots the training process over the number of epochs.
-        """
+    def plot_history(self) -> None:
         plt.figure(2)
-        plt.plot(history.history['accuracy'], label='train_accuracy')
-        plt.plot(history.history['val_accuracy'], label='val_accuracy')
-        plt.xlabel('Epoch')
+        plt.plot(self.history.history['accuracy'])
+        plt.plot(self.history.history['val_accuracy'])
+        plt.title('Accuracy vs. Epoch')
         plt.ylabel('Accuracy')
-        plt.ylim([0, 1])
-        plt.legend(loc='lower right')
+        plt.xlabel('Epoch')
+        plt.legend(['train acc', 'val acc'], loc='upper left')
         plt.draw()
+        plt.savefig(results_path + "/accuracy_epoch.png")
+        plt.show()
 
-    @staticmethod
-    def save_results(results: pd.DataFrame, path: str, name: str) -> None:
-        pass
+        plt.figure(3)
+        plt.plot(self.history.history['loss'])
+        plt.plot(self.history.history['val_loss'])
+        plt.title('Loss vs. Epoch')
+        plt.ylabel('Loss')
+        plt.xlabel('Epoch')
+        plt.legend(['train loss', 'val loss'], loc='upper left')
+        plt.draw()
+        plt.savefig(results_path + "/loss_epoch.png")
+        plt.show()
+
+    def save_model(self):
+        """
+        save the best model to path.
+        """
+        self.model.save(filepath=results_path + '/model')
+
+    def load_model(self) -> None:
+        """
+        load the best model from path.
+        """
+        self.best_model = tf.keras.models.load_model(filepath=results_path + '/model')
 
 
 def grid_search() -> TabularAnalyzer:
-    layers = [2, 3]
-    l2s = [0.001]
-    denses = [[10, 10, 10], [11, 8, 6], [11, 7, 5]]
-    activations = [['relu', 'relu', 'relu']]
+    layers = [2, 3, 4]
+    l2s = [0.001, 0.01]
+    denses = [[10, 10, 10, 10], [11, 8, 6, 6], [11, 8, 7, 5]]
+    activations = [['relu', 'relu', 'relu', 'relu'], ['selu', 'selu', 'selu', 'selu']]
     lrs = [0.001]
-    drops = [[0.3, 0.3, 0.3], [0.1, 0.1, 0.1]]
+    drops = [[0.3, 0.3, 0.3, 0.3], [0.1, 0.1, 0.1, 0.1]]
     bss = [32]
     epochs = [100]
-    optims = 'adam'
+    optims = ['adam', 'sgd', 'rmsprop']
+    best_f1 = 0
+    best_clf = TabularAnalyzer(n_layers=0, weight_decay=0,
+                               dense_size=[], activation_function=[],
+                               learning_rate=0, drop_rate=[], batch_size=0,
+                               n_epochs=0, optimizer='adam')
+    n = len(layers) * len(l2s) * len(denses) * len(activations) * len(lrs) \
+        * len(drops) * len(bss) * len(epochs) * len(optims)
+    i = 0
+    print("Number of loops: {}".format(n))
     for layer in layers:
-        for l2 in l2s:
+        for reg in l2s:
             for dense in denses:
                 for activation in activations:
                     for lr in lrs:
@@ -206,21 +214,57 @@ def grid_search() -> TabularAnalyzer:
                             for bs in bss:
                                 for epoch in epochs:
                                     for optim in optims:
-                                        clf = TabularAnalyzer(n_layers=layer, weight_decay=l2,
+                                        i += 1
+                                        print("Iteration: {}, out of {}".format(i, n))
+                                        clf = TabularAnalyzer(n_layers=layer, weight_decay=reg,
                                                               dense_size=dense, activation_function=activation,
                                                               learning_rate=lr, drop_rate=drop, batch_size=bs,
                                                               n_epochs=epoch, optimizer=optim)
-                                        accuracy = clf.train_and_test()
-                                        if accuracy > 0.82:
-                                            return clf
+                                        clf.train()
+                                        y_prob = clf.model.predict(x=clf.x_test, verbose=0)
+                                        y_pred = np.argmax(y_prob, axis=1)
+                                        y_true = np.argmax(clf.y_test, axis=1)
+                                        accuracy, f1, precision, recall, roc_auc = calculate_metrics_multiclass(y_true,
+                                                                                                                y_pred,
+                                                                                                                y_prob)
+                                        if f1 > best_f1:
+                                            best_clf = deepcopy(clf)
+                                            best_f1 = f1
                                         plt.close(1)
                                         plt.close(2)
+    return best_clf
+
+
+def train_model():
+    clf = grid_search()
+    clf.model.summary()
+    clf.plot_history()
+    clf.test()
+    y_pred_proba = clf.model.predict(x=clf.x_test,  verbose=0)
+    y_pred = np.argmax(y_pred_proba, axis=1)
+    y_true = np.argmax(clf.y_test, axis=1)
+    accuracy, f1, precision, recall, roc_auc = calculate_metrics_multiclass(y_true, y_pred, y_pred_proba)
+    print("Accuracy: {}\nF1: {}\nPrecision: {}\nRecall: {}\nAUC: {}".format(accuracy, f1, precision, recall, roc_auc))
+    clf.save_model()
+    plt.show()
+
+
+def test_model():
+    clf_loaded = TabularAnalyzer(n_layers=0, weight_decay=0,
+                                 dense_size=[], activation_function=[],
+                                 learning_rate=0, drop_rate=[], batch_size=0,
+                                 n_epochs=0, optimizer='adam')
+    clf_loaded.load_model()
+    y_pred_proba = clf_loaded.best_model.predict(x=clf_loaded.x_test, verbose=0)
+    y_pred = np.argmax(y_pred_proba, axis=1)
+    y_true = np.argmax(clf_loaded.y_test, axis=1)
+    accuracy, f1, precision, recall, roc_auc = calculate_metrics_multiclass(y_true, y_pred, y_pred_proba)
+    print("Accuracy: {}\nF1: {}\nPrecision: {}\nRecall: {}\nAUC: {}".format(accuracy, f1, precision, recall, roc_auc))
 
 
 def main():
-    clf = grid_search()
-    clf.model.save(filepath=results_path + '/model')
-    plt.show()
+    train_model()
+    test_model()
 
 
 if __name__ == '__main__':
