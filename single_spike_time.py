@@ -43,7 +43,6 @@ class TimeAnalyzer:
         directories = ['glutamatergic', 'htr3a', 'pvalb', 'sst', 'vip']
         features = []
         labels = []
-        # TODO change to interpolation
         for idx, directory in enumerate(directories):
             files = glob(data_path + directory + '/*')
             files = sorted(files)
