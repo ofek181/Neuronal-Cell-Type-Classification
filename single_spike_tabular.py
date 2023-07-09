@@ -260,10 +260,18 @@ def test_model():
     y_true = np.argmax(clf_loaded.y_test, axis=1)
     accuracy, f1, precision, recall, roc_auc = calculate_metrics_multiclass(y_true, y_pred, y_pred_proba)
     print("Accuracy: {}\nF1: {}\nPrecision: {}\nRecall: {}\nAUC: {}".format(accuracy, f1, precision, recall, roc_auc))
+    clf_loaded.best_model.summary()
+    with open(os.path.join(results_path, 'hyperparameters.txt'), "w") as file:
+        file.write(
+            "Accuracy: {}\n"
+            "F1 {}\n"
+            "Precision: {}\n"
+            "Recall: {}\n"
+            "AUC: {}".format(accuracy, f1, precision, recall, roc_auc))
 
 
 def main():
-    train_model()
+    # train_model()
     test_model()
 
 
